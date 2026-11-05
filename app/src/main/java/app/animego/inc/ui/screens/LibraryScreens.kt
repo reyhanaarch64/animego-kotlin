@@ -56,7 +56,7 @@ fun HistoryScreen(graph: AppGraph, onResume: (HistoryRecord) -> Unit) {
         else LazyColumn {
             items(history, key = { it.slug }) { row ->
                 val progress = if (row.duration > 0) (row.position / row.duration * 100).toInt().coerceIn(0, 100) else 0
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), onClick = { onResume(row) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), onClick = { onResume(row) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
                             Text(row.title, fontWeight = FontWeight.SemiBold)
@@ -93,7 +93,7 @@ fun DownloadsScreen(graph: AppGraph, onPlayOffline: (DownloadRecord) -> Unit) {
         if (downloads.isEmpty()) EmptyState("belum ada unduhan", "tambahkan episode dari halaman detail anime")
         else LazyColumn {
             items(downloads, key = { it.id }) { row ->
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.fillMaxWidth().padding(14.dp)) {
                         Text(row.title, fontWeight = FontWeight.SemiBold)
                         Text(row.ep, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

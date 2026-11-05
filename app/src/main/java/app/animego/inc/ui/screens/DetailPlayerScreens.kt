@@ -191,7 +191,7 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
                 if (item.episodes.isEmpty()) EmptyState("episode belum tersedia", "server belum mengirimkan daftar episode untuk anime ini")
                 item.episodes.forEachIndexed { index, episode ->
                     if (episodeQuery.isBlank() || episode.name.contains(episodeQuery, ignoreCase = true)) {
-                    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(14.dp)) {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(14.dp)) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f).clickable { onPlay(item.slug, index) }) {
                                 Text(episode.name, fontWeight = FontWeight.SemiBold)

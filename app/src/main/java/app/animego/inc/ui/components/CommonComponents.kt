@@ -102,7 +102,7 @@ fun AnimePosterCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modi
                 AsyncImage(anime.cover, contentDescription = anime.title, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Crop)
             }
             if (anime.score.isNotBlank()) {
-                Card(Modifier.align(Alignment.TopEnd).padding(7.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)), shape = RoundedCornerShape(8.dp)) {
+                Card(modifier = Modifier.align(Alignment.TopEnd).padding(7.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)), shape = RoundedCornerShape(8.dp)) {
                     Text("★ ${anime.score}", Modifier.padding(horizontal = 7.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
             }

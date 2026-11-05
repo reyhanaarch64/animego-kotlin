@@ -135,7 +135,7 @@ fun SearchScreen(graph: AppGraph, onOpenAnime: (String) -> Unit) {
         if (suggestions.isNotEmpty()) {
             Text("saran pencarian", Modifier.padding(start = 18.dp, top = 8.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
             suggestions.forEach { anime ->
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp), onClick = { onOpenAnime(anime.slug) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp), onClick = { onOpenAnime(anime.slug) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Text(anime.title, Modifier.padding(14.dp), fontWeight = FontWeight.Medium)
                 }
             }
@@ -175,7 +175,7 @@ fun GenreListScreen(graph: AppGraph, onOpenGenre: (String) -> Unit, onBack: () -
             error.isNotBlank() -> EmptyState("gagal memuat genre", error)
             else -> LazyColumn {
                 items(genres, key = { it.id }) { genre ->
-                    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), onClick = { onOpenGenre(genre.slug) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), onClick = { onOpenGenre(genre.slug) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
                                 Text(genre.name, fontWeight = FontWeight.SemiBold)

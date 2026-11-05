@@ -83,7 +83,7 @@ fun HomeScreen(
         }
         if (loading) LoadingState("mengambil katalog AnimeGo...")
         if (error.isNotBlank()) {
-            Card(Modifier.fillMaxWidth().padding(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+            Card(modifier = Modifier.fillMaxWidth().padding(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(16.dp)) {
                     Text("gagal memuat data", fontWeight = FontWeight.Bold)
                     Text(error, style = MaterialTheme.typography.bodySmall)

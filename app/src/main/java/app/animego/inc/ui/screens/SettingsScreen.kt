@@ -49,7 +49,7 @@ fun SettingsScreen(graph: AppGraph, onBack: () -> Unit) {
                 context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
             }) { Text(if (Settings.canDrawOverlays(context)) "diizinkan" else "izinkan") }
         }
-        Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("animego native", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("versi 2.0.0 · Kotlin + Jetpack Compose", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
