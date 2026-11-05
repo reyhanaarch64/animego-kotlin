@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "app.animego.inc"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.animego.inc"
