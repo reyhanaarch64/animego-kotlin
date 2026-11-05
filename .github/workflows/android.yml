@@ -34,8 +34,12 @@ jobs:
             SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | head -1)
           fi
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0"
-
+          "$SDKMANAGER" --list 2>/dev/null | grep -oE 'platforms;android-[0-9A-Za-z.]+' | sort -uV | tail -5
+          PLAT=$("$SDKMANAGER" --list 2>/dev/null | grep -oE 'platforms;android-3[7-9](\.[0-9]+)?' | sort -uV | tail -1)
+          BT=$("$SDKMANAGER" --list 2>/dev/null | grep -oE 'build-tools;3[6-9][0-9.]*' | sort -uV | tail -1)
+          echo "pakai: $PLAT | $BT"
+          if [ -z "$PLAT" ]; then echo "platform API 37 tidak ditemukan di repo sdk"; exit 1; fi
+          "$SDKMANAGER" "platform-tools" "$PLAT" "$BT"
       - name: build debug apk
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
