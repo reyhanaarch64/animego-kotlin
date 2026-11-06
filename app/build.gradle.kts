@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "app.animego.inc"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 35
         versionCode = 2
         versionName = "2.0.0"
