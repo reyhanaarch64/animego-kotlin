@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "1641185226",
+    "firebase_url": "https://animego2-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "animego2",
+    "storage_bucket": "animego2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1641185226:android:1e9a5ff8e73fcc7f4b9933",
+        "android_client_info": {
+          "package_name": "app.animego.inc"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1641185226-teirgpv3bqd5qgt1rbl2gt6t7bed7ae2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApr5EwSEGYqKZOBZWhN8u6Q6K1GLnQ3Rs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1641185226-teirgpv3bqd5qgt1rbl2gt6t7bed7ae2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
