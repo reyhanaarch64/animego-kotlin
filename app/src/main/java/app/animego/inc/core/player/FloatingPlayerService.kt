@@ -18,6 +18,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.view.ViewConfiguration
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -25,6 +26,7 @@ import android.view.View
 import android.view.WindowManager
 import android.util.Log
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -63,7 +65,8 @@ class FloatingPlayerService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var windowManager: WindowManager? = null
     private var overlayContext: Context? = null
-    private var overlay: LinearLayout? = null
+    private var overlay: FloatingOverlayRoot? = null
+    private var controlsOverlay: View? = null
     private var windowParams: WindowManager.LayoutParams? = null
     private var playerView: PlayerView? = null
     private var seekBar: SeekBar? = null
@@ -197,14 +200,7 @@ class FloatingPlayerService : Service() {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-        // Build the overlay window context only after the permission check in
-        // onStartCommand. This keeps Service creation safe on devices where the
-        // user has not granted SYSTEM_ALERT_WINDOW yet.
         val viewContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // A Service context is not guaranteed to be display-associated.
-            // createWindowContext() requires a context attached to a Display;
-            // derive one explicitly from the default display before creating
-            // the TYPE_APPLICATION_OVERLAY context (Android 11+).
             val displayManager = getSystemService(DisplayManager::class.java)
                 ?: error("display manager tidak tersedia")
             val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
@@ -216,42 +212,61 @@ class FloatingPlayerService : Service() {
         overlayContext = viewContext
         val wm = viewContext.getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager = wm
-        val density = viewContext.resources.displayMetrics.density
         val screenWidth = viewContext.resources.displayMetrics.widthPixels
         val screenHeight = viewContext.resources.displayMetrics.heightPixels
-        val minWidth = dp(250)
-        val maxWidth = (screenWidth - dp(16)).coerceAtLeast(minWidth)
-        val width = minOf(dp(340), maxWidth).coerceAtLeast(minWidth)
-        val minHeight = dp(220)
-        val maxHeight = (screenHeight * 0.84f).roundToInt().coerceAtLeast(minHeight)
-        val height = minOf(dp(320), maxHeight).coerceAtLeast(minHeight)
 
-        val root = LinearLayout(viewContext).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(9), dp(7), dp(9), dp(8))
-            background = roundedBackground(AndroidColor.rgb(17, 18, 27), dp(18).toFloat(), AndroidColor.rgb(52, 54, 70))
-            elevation = dp(12).toFloat()
+        // The floating window is only the video rectangle. All controls are
+        // layered on top of the video, so they do not increase its dimensions.
+        val minWidth = dp(240)
+        val maxWidth = (screenWidth - dp(24)).coerceAtLeast(minWidth)
+        val width = dp(300).coerceIn(minWidth, maxWidth)
+        val height = (width * 9f / 16f).roundToInt()
+
+        val root = FloatingOverlayRoot(viewContext).apply {
+            background = roundedBackground(AndroidColor.BLACK, dp(14).toFloat())
+            clipToOutline = true
+            elevation = dp(14).toFloat()
         }
 
+        val video = LayoutInflater.from(ContextThemeWrapper(viewContext, R.style.AppTheme))
+            .inflate(R.layout.view_floating_player, root, false) as PlayerView
+        video.player = PlaybackEngine.player(this)
+        video.useController = false
+        playerView = video
+        root.addView(video, FrameLayout.LayoutParams(-1, -1))
+        video.setOnClickListener { toggleControls() }
+
+        val controls = FrameLayout(viewContext).apply {
+            isClickable = false
+            isFocusable = false
+        }
+        controlsOverlay = controls
+        root.addView(controls, FrameLayout.LayoutParams(-1, -1))
+
+        // Compact top overlay: title on the left, actions on the right.
         val header = LinearLayout(viewContext).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), dp(3), dp(5), dp(3))
+            background = roundedBackground(AndroidColor.argb(178, 8, 9, 15), dp(9).toFloat())
+            setOnClickListener { toggleControls() }
         }
         val titleColumn = LinearLayout(viewContext).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2), 0, dp(2), 0)
         }
         val titleView = TextView(viewContext).apply {
             text = PlaybackEngine.currentTitle.ifBlank { "AnimeGo" }
             setTextColor(AndroidColor.WHITE)
-            textSize = 13f
+            textSize = 10.5f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
         val episodeView = TextView(viewContext).apply {
             text = PlaybackEngine.currentEpisode
             setTextColor(AndroidColor.LTGRAY)
-            textSize = 10f
+            textSize = 8f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
@@ -259,37 +274,67 @@ class FloatingPlayerService : Service() {
         episodeLabel = episodeView
         titleColumn.addView(titleView, LinearLayout.LayoutParams(-1, -2))
         titleColumn.addView(episodeView, LinearLayout.LayoutParams(-1, -2))
-        header.addView(titleColumn, LinearLayout.LayoutParams(0, dp(42), 1f))
-        header.addView(actionButton("buka") { openPlayer() }, LinearLayout.LayoutParams(dp(48), dp(38)))
-        header.addView(actionButton("×") { stopSelf() }, LinearLayout.LayoutParams(dp(38), dp(38)))
-        root.addView(header, LinearLayout.LayoutParams(-1, dp(42)))
+        header.addView(titleColumn, LinearLayout.LayoutParams(0, -1, 1f))
+        muteButton = controlButton(if (PlaybackEngine.player(this).volume <= 0f) "SOUND" else "MUTE") {
+            toggleMute()
+        }.apply { textSize = 8f }
+        header.addView(muteButton, LinearLayout.LayoutParams(dp(38), dp(28)).apply { leftMargin = dp(3) })
+        speedButton = controlButton("1×") { cycleSpeed() }.apply { textSize = 8f }
+        header.addView(speedButton, LinearLayout.LayoutParams(dp(38), dp(28)).apply { leftMargin = dp(3) })
+        header.addView(actionButton("↗") { openPlayer() }, LinearLayout.LayoutParams(dp(30), dp(28)).apply { leftMargin = dp(3) })
+        header.addView(actionButton("×") { stopSelf() }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { leftMargin = dp(3) })
+        controls.addView(
+            header,
+            FrameLayout.LayoutParams(-1, dp(34), Gravity.TOP).apply {
+                leftMargin = dp(5); topMargin = dp(5); rightMargin = dp(5)
+            }
+        )
 
-        // The overlay uses a TextureView-backed PlayerView. Unlike a normal
-        // activity SurfaceView, it composes predictably with a movable/resizable
-        // TYPE_APPLICATION_OVERLAY window on Android OEM builds.
-        val video = LayoutInflater.from(ContextThemeWrapper(viewContext, R.style.AppTheme))
-            .inflate(R.layout.view_floating_player, root, false) as PlayerView
-        video.player = PlaybackEngine.player(this)
-        playerView = video
-        root.addView(video, LinearLayout.LayoutParams(-1, 0, 1f).apply {
-            topMargin = dp(3)
-            bottomMargin = dp(4)
-        })
-
-        val seekRow = LinearLayout(viewContext).apply {
+        // Center transport controls are drawn directly over the video.
+        val transport = LinearLayout(viewContext).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(3), dp(4), dp(3))
+            background = roundedBackground(AndroidColor.argb(150, 8, 9, 15), dp(24).toFloat())
+            setOnClickListener { toggleControls() }
         }
-        timeLabel = TextView(viewContext).apply {
-            setTextColor(AndroidColor.LTGRAY)
-            textSize = 9f
-            text = "00:00 / 00:00"
+        previousButton = controlButton("|◀") {
+            PlaybackEngine.skipQueue(this@FloatingPlayerService, -1)
+        }
+        transport.addView(previousButton, LinearLayout.LayoutParams(dp(34), dp(36)))
+        transport.addView(controlButton("−10") {
+            PlaybackEngine.player(this@FloatingPlayerService).seekBack()
+        }, LinearLayout.LayoutParams(dp(38), dp(36)))
+        playButton = controlButton("Ⅱ") { togglePlayback() }.apply { textSize = 17f }
+        transport.addView(playButton, LinearLayout.LayoutParams(dp(42), dp(38)))
+        transport.addView(controlButton("+10") {
+            PlaybackEngine.player(this@FloatingPlayerService).seekForward()
+        }, LinearLayout.LayoutParams(dp(38), dp(36)))
+        nextButton = controlButton("▶|") {
+            PlaybackEngine.skipQueue(this@FloatingPlayerService, 1)
+        }
+        transport.addView(nextButton, LinearLayout.LayoutParams(dp(34), dp(36)))
+        controls.addView(
+            transport,
+            FrameLayout.LayoutParams(-2, dp(44), Gravity.CENTER)
+        )
+
+        // Seekbar and time are part of the bottom video overlay, not a row
+        // below the PlayerView. The progress ticker never overwrites scrubbing.
+        val bottomPanel = LinearLayout(viewContext).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(2), dp(8), dp(4))
+            background = roundedBackground(AndroidColor.argb(188, 8, 9, 15), dp(8).toFloat())
+            setOnClickListener { toggleControls() }
         }
         val bar = SeekBar(viewContext).apply {
             max = 1000
+            splitTrack = false
             progressTintList = android.content.res.ColorStateList.valueOf(AndroidColor.rgb(190, 145, 255))
             thumbTintList = android.content.res.ColorStateList.valueOf(AndroidColor.WHITE)
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(AndroidColor.DKGRAY)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(AndroidColor.argb(150, 220, 220, 220))
+            setPadding(0, 0, 0, 0)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser) updateTimePreview(progress)
@@ -298,74 +343,29 @@ class FloatingPlayerService : Service() {
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
                     val player = PlaybackEngine.player(this@FloatingPlayerService)
                     val duration = player.duration
-                    if (duration > 0L) player.seekTo((duration * ((seekBar?.progress ?: 0) / 1000f)).toLong())
+                    if (duration > 0L) {
+                        player.seekTo((duration * ((seekBar?.progress ?: 0) / 1000f)).toLong())
+                    }
                     userSeeking = false
                     refreshTimeline()
                 }
             })
         }
         seekBar = bar
-        seekRow.addView(bar, LinearLayout.LayoutParams(0, dp(30), 1f))
-        seekRow.addView(timeLabel, LinearLayout.LayoutParams(dp(78), -2).apply { leftMargin = dp(5) })
-        root.addView(seekRow, LinearLayout.LayoutParams(-1, dp(30)))
-
-        val transportControls = LinearLayout(viewContext).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        bottomPanel.addView(bar, LinearLayout.LayoutParams(-1, dp(24)))
+        timeLabel = TextView(viewContext).apply {
+            setTextColor(AndroidColor.WHITE)
+            textSize = 8f
+            text = "00:00 / 00:00"
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        previousButton = controlButton("prev") { PlaybackEngine.skipQueue(this@FloatingPlayerService, -1) }
-        transportControls.addView(previousButton, weightedControl())
-        transportControls.addView(controlButton("−10") { PlaybackEngine.player(this@FloatingPlayerService).seekBack() }, weightedControl())
-        playButton = controlButton("jeda") { togglePlayback() }
-        transportControls.addView(playButton, weightedControl())
-        transportControls.addView(controlButton("+10") { PlaybackEngine.player(this@FloatingPlayerService).seekForward() }, weightedControl())
-        nextButton = controlButton("next") { PlaybackEngine.skipQueue(this@FloatingPlayerService, 1) }
-        transportControls.addView(nextButton, weightedControl())
-        root.addView(transportControls, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(2) })
-
-        val secondaryControls = LinearLayout(viewContext).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        isMuted = PlaybackEngine.player(this).volume <= 0f
-        muteButton = controlButton(if (isMuted) "suara aktif" else "mute") { toggleMute() }
-        secondaryControls.addView(muteButton, LinearLayout.LayoutParams(0, dp(30), 1f).apply { leftMargin = dp(2); rightMargin = dp(4) })
-        speedButton = controlButton("1.0×") { cycleSpeed() }
-        secondaryControls.addView(speedButton, LinearLayout.LayoutParams(0, dp(30), 1f).apply { leftMargin = dp(4); rightMargin = dp(2) })
-        root.addView(secondaryControls, LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(1) })
-
-        // Drag from the title area; controls remain directly clickable.
-        var lastRawX = 0f
-        var lastRawY = 0f
-        titleColumn.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - lastRawX
-                    val dy = event.rawY - lastRawY
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                    moveOverlay(dx, dy)
-                    true
-                }
-                else -> false
+        bottomPanel.addView(timeLabel, LinearLayout.LayoutParams(-1, dp(12)))
+        controls.addView(
+            bottomPanel,
+            FrameLayout.LayoutParams(-1, dp(43), Gravity.BOTTOM).apply {
+                leftMargin = dp(5); rightMargin = dp(5); bottomMargin = dp(5)
             }
-        }
-
-        val scaleDetector = ScaleGestureDetector(viewContext, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                resizeOverlay(detector.scaleFactor)
-                return true
-            }
-        })
-        video.setOnTouchListener { _, event ->
-            scaleDetector.onTouchEvent(event)
-            false
-        }
+        )
 
         val layout = WindowManager.LayoutParams(
             width,
@@ -377,26 +377,34 @@ class FloatingPlayerService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = ((screenWidth - width) / 2).coerceAtLeast(0)
-            y = (80 * density).roundToInt().coerceAtLeast(0)
+            // Start near the lower-right edge instead of permanently appearing
+            // in the middle of the display. The user can drag it anywhere.
+            x = (screenWidth - width - dp(14)).coerceAtLeast(0)
+            y = (screenHeight * 0.58f).roundToInt().coerceIn(0, (screenHeight - height).coerceAtLeast(0))
         }
 
-        // Keep references only after addView succeeds, so cleanup is deterministic.
         wm.addView(root, layout)
         overlay = root
         windowParams = layout
-        // Only tell the Compose player to detach after the overlay view has
-        // successfully attached its own video surface. This follows Media3's
-        // recommended new-view-first handoff and leaves the screen player
-        // untouched when WindowManager rejects an overlay window.
         PlaybackEngine.setOverlayActive(true)
         refreshButtons()
         refreshTimeline()
+        setControlsVisible(true)
+    }
+
+    private fun toggleControls() {
+        val currentlyVisible = controlsOverlay?.visibility == View.VISIBLE
+        setControlsVisible(!currentlyVisible)
+    }
+
+    private fun setControlsVisible(visible: Boolean) {
+        controlsOverlay?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun removeOverlay() {
         val old = overlay
         overlay = null
+        controlsOverlay = null
         runCatching { playerView?.player = null }
         playerView = null
         if (old != null) runCatching { windowManager?.removeView(old) }
@@ -427,10 +435,13 @@ class FloatingPlayerService : Service() {
         val p = windowParams ?: return
         val view = overlay ?: return
         val bounds = screenBounds()
-        val minWidth = dp(250)
-        val minHeight = dp(220)
-        p.width = (p.width * scale).roundToInt().coerceIn(minWidth, (bounds.first - dp(12)).coerceAtLeast(minWidth))
-        p.height = (p.height * scale).roundToInt().coerceIn(minHeight, (bounds.second * 0.88f).roundToInt().coerceAtLeast(minHeight))
+        val minWidth = dp(240)
+        val maxWidth = (bounds.first - dp(24)).coerceAtLeast(minWidth)
+        val maxHeightWidth = ((bounds.second - dp(24)) * 16f / 9f).roundToInt()
+        val maxWidthByHeight = maxHeightWidth.coerceAtLeast(minWidth)
+        val newWidth = (p.width * scale).roundToInt().coerceIn(minWidth, minOf(maxWidth, maxWidthByHeight))
+        p.width = newWidth
+        p.height = (newWidth * 9f / 16f).roundToInt()
         p.x = p.x.coerceIn(0, (bounds.first - p.width).coerceAtLeast(0))
         p.y = p.y.coerceIn(0, (bounds.second - p.height).coerceAtLeast(0))
         runCatching { windowManager?.updateViewLayout(view, p) }
@@ -467,8 +478,8 @@ class FloatingPlayerService : Service() {
             speedIndex = speeds.indices.minByOrNull { kotlin.math.abs(speeds[it] - player.playbackParameters.speed) } ?: 1
         }
         isMuted = player.volume <= 0f
-        playButton?.text = if (player.isPlaying) "jeda" else "putar"
-        muteButton?.text = if (isMuted) "suara aktif" else "mute"
+        playButton?.text = if (player.isPlaying) "Ⅱ" else "▶"
+        muteButton?.text = if (isMuted) "SOUND" else "MUTE"
         val speedText = speeds[speedIndex].let { value ->
             if (value % 1f == 0f) value.toInt().toString()
             else value.toString().trimEnd('0').trimEnd('.')
@@ -523,6 +534,92 @@ class FloatingPlayerService : Service() {
         putExtra("offline", PlaybackEngine.currentOffline)
     }
 
+    /**
+     * Observes touches before dispatching them to children. This allows dragging
+     * from almost any point of the video window while normal child controls
+     * (especially the SeekBar) continue to receive their own touch events.
+     * Pinch gestures resize the whole window while preserving a 16:9 ratio.
+     */
+    private inner class FloatingOverlayRoot(context: Context) : FrameLayout(context) {
+        private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        private var lastRawX = 0f
+        private var lastRawY = 0f
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var dragging = false
+        private var downOnSeekBar = false
+        private val scaleDetector = ScaleGestureDetector(
+            context,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    resizeOverlay(detector.scaleFactor)
+                    return true
+                }
+            }
+        )
+
+        override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+            // Once a drag crosses touch slop, cancel the child control's click
+            // target so moving the popup from a button cannot also activate it.
+            return scaleDetector.isInProgress || (dragging && event.pointerCount == 1)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean = true
+
+        override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+            scaleDetector.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
+                    dragging = false
+                    downOnSeekBar = isPointInside(seekBar, event.rawX, event.rawY)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
+                        val totalDx = event.rawX - downRawX
+                        val totalDy = event.rawY - downRawY
+                        val passedSlop = kotlin.math.hypot(totalDx.toDouble(), totalDy.toDouble()) > touchSlop
+                        val verticalDragFromSeek = downOnSeekBar && kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.2f
+                        if (!dragging && passedSlop && (!downOnSeekBar || verticalDragFromSeek)) {
+                            dragging = true
+                        }
+                        if (dragging) {
+                            moveOverlay(event.rawX - lastRawX, event.rawY - lastRawY)
+                        }
+                    }
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
+                    downOnSeekBar = false
+                }
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
+                    // Rebase the drag origin around pinch gestures so the
+                    // remaining finger cannot cause a sudden window jump.
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    lastRawX = event.rawX
+                    lastRawY = event.rawY
+                    dragging = false
+                }
+            }
+            return super.dispatchTouchEvent(event)
+        }
+
+        private fun isPointInside(target: View?, rawX: Float, rawY: Float): Boolean {
+            target ?: return false
+            if (!target.isShown) return false
+            val location = IntArray(2)
+            target.getLocationOnScreen(location)
+            return rawX >= location[0] && rawX <= location[0] + target.width &&
+                rawY >= location[1] && rawY <= location[1] + target.height
+        }
+    }
+
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -573,9 +670,6 @@ class FloatingPlayerService : Service() {
         setPadding(dp(4), dp(5), dp(4), dp(5))
         setOnClickListener { action() }
     }
-
-    private fun weightedControl(): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) }
 
     private fun roundedBackground(color: Int, radius: Float, stroke: Int? = null): GradientDrawable =
         GradientDrawable().apply {
