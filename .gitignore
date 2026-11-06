@@ -1,0 +1,17 @@
+.gradle/
+.idea/
+**/build/
+local.properties
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+functions/node_modules/
+functions/lib/
+.firebase/
+
+# firebase config berisi kunci, jangan dipush
+app/google-services.json
