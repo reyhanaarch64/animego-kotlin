@@ -4,14 +4,14 @@ rewrite native AnimeGo berbasis Kotlin + Jetpack Compose. project ini tidak mema
 
 ## requirement build
 
-- Android Studio versi yang mendukung Android Gradle Plugin 8.13.x
+- Android Studio versi yang mendukung Android Gradle Plugin 9.1.0
 - JDK 17
-- Android SDK Platform 36 dan Build Tools 36.0.0
+- Android SDK Platform 37 dan Build Tools 37.x
 - koneksi internet saat build pertama untuk mengunduh Gradle, plugin, dan dependency
 
 ## stack
 
-- Kotlin 2.4.21, Android Gradle Plugin 8.13.2, Gradle 8.13, JVM 17
+- Kotlin 2.4.21, Android Gradle Plugin 9.1.0, Gradle 9.3.1, JVM 17
 - Jetpack Compose, Material 3, Navigation Compose
 - Lucide Compose (`icons-lucide-cmp`) untuk icon vector
 - OkHttp 5 untuk WordPress REST API AnimeGo
@@ -27,7 +27,7 @@ rewrite native AnimeGo berbasis Kotlin + Jetpack Compose. project ini tidak mema
 ./gradlew :app:assembleDebug
 ```
 
-script `gradlew` dan `gradlew.bat` di project ini merupakan bootstrap ringan: keduanya mengunduh Gradle 8.13 ke cache user ketika belum tersedia, lalu menjalankan build. GitHub Actions memakai Gradle 8.13 yang dipasang di runner, jadi tidak perlu mengunduh distribusi Gradle dari script tersebut.
+script `gradlew` dan `gradlew.bat` di project ini merupakan bootstrap ringan: keduanya mengunduh Gradle 9.3.1 ke cache user ketika belum tersedia, lalu menjalankan build. Versinya disamakan dengan Gradle yang digunakan GitHub Actions dan persyaratan Android Gradle Plugin 9.1.0.
 
 APK debug akan berada di:
 
@@ -45,7 +45,7 @@ workflow ada di `.github/workflows/android.yml`. workflow otomatis berjalan pada
 4. pilih workflow **android build** dan tunggu job selesai.
 5. buka hasil run lalu unduh artifact `animego-debug-apk`.
 
-APK tersedia sebagai artifact selama 14 hari. build menggunakan JDK 17, Gradle 8.13, Android SDK 36, dan task `:app:assembleDebug`.
+APK tersedia sebagai artifact selama 14 hari. build menggunakan JDK 17, Gradle 9.3.1, Android SDK Platform 37, dan task `:app:assembleDebug`.
 
 contoh push dari Termux:
 
@@ -69,9 +69,9 @@ ganti URL remote dengan repository milik lu.
 - direktori genre, detail genre, jadwal mingguan per hari, serta pagination
 - favorit, riwayat tontonan, resume posisi, hapus item, dan bersihkan riwayat
 - Media3 player: play/pause, seek ±10 detik, volume/mute, playback speed, episode sebelumnya/berikutnya, dan auto-next
-- mini-player yang tetap tersedia saat berpindah tab/halaman; PlaybackService juga menyimpan progress tiap 5 detik ketika UI player tidak sedang terbuka
+- mini-player lintas halaman dengan seekbar, timestamp, skip ±10 detik, play/pause, mute, speed, dan episode sebelumnya/berikutnya; PlaybackService juga menyimpan progress tiap 5 detik ketika UI player tidak sedang terbuka
 - fullscreen portrait dan landscape
-- floating overlay player dengan long-press drag, pinch-to-resize, kembali ke layar player, kontrol play/pause, dan close
+- floating overlay player native dengan drag, pinch-to-resize, kembali ke layar player, seekbar + timestamp, skip ±10 detik, play/pause, mute, playback speed, episode sebelumnya/berikutnya, dan close
 - streaming online, membuka URL stream lewat aplikasi eksternal, dan playback file lokal
 - antrean download, notifikasi foreground, HTTP Range/resume via file `.part`, retry, hapus file, dan pemulihan antrean ketika boot/update aplikasi
 - pengaturan tema gelap, warna dinamis, optimasi baterai, pengelolaan aktivitas latar, dan izin floating overlay
@@ -87,6 +87,21 @@ ganti URL remote dengan repository milik lu.
 
 aplikasi sumber memiliki fallback fetch melalui WebView apabila server mengembalikan halaman HTML non-JSON. fallback itu sengaja tidak dipertahankan karena requirement rewrite adalah tanpa WebView sama sekali. implementasi Kotlin memakai OkHttp, browser-like headers, origin warm-up, cookie handling, dan retry. bila proteksi server menolak request native dan mengirim HTML challenge, API tetap perlu penyesuaian dari sisi server; aplikasi tidak menyisipkan WebView tersembunyi.
 
+## catatan perbaikan player (6 november 2026)
+
+- floating player tidak lagi membuat `ComposeView` dari dalam `Service`. overlay dibangun dengan Android Views native, sehingga tidak bergantung pada `ViewTreeLifecycleOwner` milik Activity.
+- kegagalan `WindowManager.addView()` ditangani dan dibersihkan, bukan dibiarkan menjatuhkan proses aplikasi.
+- tombol floating player yang membuka Settings izin overlay akan otomatis melanjutkan saat pengguna kembali dan izin sudah aktif.
+- surface video dipindahkan sementara dari `PlayerView` layar utama ke `PlayerView` overlay, lalu dikembalikan saat overlay ditutup. target view baru dipasang sebelum view lama dilepas agar perpindahan surface tidak melewati keadaan tanpa output.
+- pada Android 11+, konteks jendela overlay dibuat dari `createDisplayContext(defaultDisplay)` terlebih dahulu, baru `createWindowContext(TYPE_APPLICATION_OVERLAY)`. service context biasa tidak diasumsikan sudah terikat ke display.
+- layout video popup memakai `TextureView` melalui `PlayerView` khusus overlay, bukan `SurfaceView` default.
+- kontrol popup mencakup seekbar, waktu berjalan/durasi, skip ±10 detik, play/pause, mute, kecepatan, episode sebelumnya/berikutnya, buka player, dan tutup. Kontrol transport dan pengaturan dipisah menjadi dua baris agar tombol tidak terlalu rapat.
+- fullscreen mengunci orientasi `LANDSCAPE`/`PORTRAIT` secara eksplisit saat tombol ditekan, mempertahankan state lewat configuration change, dan tidak memulihkan orientasi lama ketika Activity sedang direkreasi karena perubahan konfigurasi.
+- seekbar memakai posisi preview terpisah agar polling posisi playback tidak menggeser slider ketika pengguna sedang menggeser.
+- layar player portrait dan fullscreen menyediakan seekbar, timestamp, skip ±10 detik, play/pause, mute, kecepatan, navigasi episode, dan akses floating player.
+- mini-player dan popup menyediakan seekbar, timestamp, skip ±10 detik, play/pause, mute, kecepatan, serta navigasi episode.
+- notifikasi playback menampilkan progress playback dan menyediakan aksi episode sebelumnya/berikutnya, mundur/maju 10 detik, play/pause, dan tutup.
+
 ## catatan pengujian
 
-source disiapkan untuk build di GitHub Actions. environment penyusunan ZIP ini tidak menyediakan Android SDK, Gradle distribution, maupun akses dependency repository, sehingga APK belum dapat dikompilasi dan diuji runtime di sini. hasil compile sesungguhnya akan dilaporkan oleh workflow GitHub Actions setelah source dipush.
+source dan struktur proyek diperiksa secara statis. environment penyusunan ZIP ini tidak menyediakan Android SDK/Gradle distribution dan tidak dapat mengakses dependency repository, jadi APK tidak dapat dikompilasi atau diuji pada perangkat di sini. validasi kompilasi akhir tetap perlu dijalankan melalui GitHub Actions dan pengujian runtime di perangkat Android.

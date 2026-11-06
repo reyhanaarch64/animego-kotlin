@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
@@ -52,6 +53,14 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
     val navController = rememberNavController()
     val context = LocalContext.current
     val playback by PlaybackEngine.snapshot.collectAsState()
+    LaunchedEffect(playback.source) {
+        if (playback.source.isNotBlank()) {
+            while (true) {
+                PlaybackEngine.refresh()
+                delay(500L)
+            }
+        }
+    }
     LaunchedEffect(routeRequestId) {
         if (routeRequestId > 0L) {
             navController.navigate(initialRoute) { launchSingleTop = true }
@@ -86,7 +95,26 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
                                 )) { launchSingleTop = true }
                             },
                             onToggle = { PlaybackEngine.toggle(context) },
-                            onClose = { PlaybackEngine.stop(context) }
+                            onClose = { PlaybackEngine.stop(context) },
+                            onSeek = { positionMs -> PlaybackEngine.player(context).seekTo(positionMs); PlaybackEngine.refresh() },
+                            onSkipBack = { PlaybackEngine.player(context).seekBack(); PlaybackEngine.refresh() },
+                            onSkipForward = { PlaybackEngine.player(context).seekForward(); PlaybackEngine.refresh() },
+                            onMuteToggle = {
+                                val player = PlaybackEngine.player(context)
+                                player.volume = if (player.volume <= 0f) 1f else 0f
+                                PlaybackEngine.refresh()
+                            },
+                            onSpeedCycle = {
+                                val player = PlaybackEngine.player(context)
+                                val rates = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
+                                val index = rates.indexOfFirst { it == player.playbackParameters.speed }.coerceAtLeast(0)
+                                player.setPlaybackSpeed(rates[(index + 1) % rates.size])
+                                PlaybackEngine.refresh()
+                            },
+                            onPreviousEpisode = { PlaybackEngine.skipQueue(context, -1) },
+                            onNextEpisode = { PlaybackEngine.skipQueue(context, 1) },
+                            canPreviousEpisode = PlaybackEngine.canSkipQueue(-1),
+                            canNextEpisode = PlaybackEngine.canSkipQueue(1)
                         )
                     }
                     if (showBottomBar) {

@@ -2,7 +2,7 @@
 # Lightweight Gradle bootstrap wrapper. Keeps the project buildable without a local Gradle install.
 set -eu
 APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-GRADLE_VERSION="8.13"
+GRADLE_VERSION="9.3.1"
 GRADLE_USER_HOME="${GRADLE_USER_HOME:-${HOME}/.gradle}"
 DIST_ROOT="${GRADLE_USER_HOME}/wrapper/dists/gradle-${GRADLE_VERSION}-bin/animego"
 GRADLE_BIN="${DIST_ROOT}/gradle-${GRADLE_VERSION}/bin/gradle"

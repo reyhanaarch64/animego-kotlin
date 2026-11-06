@@ -26,6 +26,10 @@ class PlaybackService : Service() {
         private const val NOTIFICATION_ID = 5101
         const val ACTION_TOGGLE = "app.animego.inc.PLAYBACK_TOGGLE"
         const val ACTION_STOP = "app.animego.inc.PLAYBACK_STOP"
+        const val ACTION_SEEK_BACK = "app.animego.inc.PLAYBACK_SEEK_BACK"
+        const val ACTION_SEEK_FORWARD = "app.animego.inc.PLAYBACK_SEEK_FORWARD"
+        const val ACTION_PREVIOUS_EPISODE = "app.animego.inc.PLAYBACK_PREVIOUS_EPISODE"
+        const val ACTION_NEXT_EPISODE = "app.animego.inc.PLAYBACK_NEXT_EPISODE"
 
         fun start(context: Context) {
             val intent = Intent(context, PlaybackService::class.java)
@@ -38,7 +42,10 @@ class PlaybackService : Service() {
     private val progressTask = object : Runnable {
         override fun run() {
             saveProgress()
-            if (PlaybackEngine.currentSource.isNotBlank()) handler.postDelayed(this, 5_000L)
+            if (PlaybackEngine.currentSource.isNotBlank()) {
+                updateNotification()
+                handler.postDelayed(this, 5_000L)
+            }
         }
     }
 
@@ -65,8 +72,13 @@ class PlaybackService : Service() {
                 val player = PlaybackEngine.player(this)
                 if (player.isPlaying) player.pause() else player.play()
             }
+            ACTION_SEEK_BACK -> PlaybackEngine.player(this).seekBack()
+            ACTION_SEEK_FORWARD -> PlaybackEngine.player(this).seekForward()
+            ACTION_PREVIOUS_EPISODE -> PlaybackEngine.skipQueue(this, -1)
+            ACTION_NEXT_EPISODE -> PlaybackEngine.skipQueue(this, 1)
             ACTION_STOP -> {
                 saveProgress()
+                stopService(Intent(this, FloatingPlayerService::class.java))
                 PlaybackEngine.clear()
                 stopForeground(true)
                 stopSelf()
@@ -131,8 +143,16 @@ class PlaybackService : Service() {
         val open = PendingIntent.getActivity(this, 5101, openPlayerIntent(), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val toggle = PendingIntent.getService(this, 5102, Intent(this, PlaybackService::class.java).setAction(ACTION_TOGGLE), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 5103, Intent(this, PlaybackService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val seekBack = PendingIntent.getService(this, 5104, Intent(this, PlaybackService::class.java).setAction(ACTION_SEEK_BACK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val seekForward = PendingIntent.getService(this, 5105, Intent(this, PlaybackService::class.java).setAction(ACTION_SEEK_FORWARD), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val previous = PendingIntent.getService(this, 5106, Intent(this, PlaybackService::class.java).setAction(ACTION_PREVIOUS_EPISODE), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val next = PendingIntent.getService(this, 5107, Intent(this, PlaybackService::class.java).setAction(ACTION_NEXT_EPISODE), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val title = PlaybackEngine.currentTitle.ifBlank { "AnimeGo" }
         val line = PlaybackEngine.currentEpisode.ifBlank { "Sedang diputar" }
+        val duration = player.duration.takeIf { it > 0L } ?: 0L
+        val progress = if (duration > 0L) {
+            ((player.currentPosition.coerceAtLeast(0L).toDouble() / duration) * 1000.0).toInt().coerceIn(0, 1000)
+        } else 0
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_animego)
             .setContentTitle(title)
@@ -140,7 +160,12 @@ class PlaybackService : Service() {
             .setContentIntent(open)
             .setOnlyAlertOnce(true)
             .setOngoing(player.isPlaying)
+            .setProgress(1000, progress, duration <= 0L)
+            .addAction(android.R.drawable.ic_media_previous, "Episode sebelumnya", previous)
+            .addAction(android.R.drawable.ic_media_rew, "Mundur 10 detik", seekBack)
             .addAction(if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (player.isPlaying) "Jeda" else "Putar", toggle)
+            .addAction(android.R.drawable.ic_media_ff, "Maju 10 detik", seekForward)
+            .addAction(android.R.drawable.ic_media_next, "Episode berikutnya", next)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Tutup", stop)
             .build()
     }

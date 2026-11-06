@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +27,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,12 +44,14 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import android.content.ContextWrapper
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +76,7 @@ import app.animego.inc.core.download.DownloadScheduler
 import app.animego.inc.core.download.DownloadStorage
 import app.animego.inc.core.player.FloatingPlayerService
 import app.animego.inc.core.player.PlaybackEngine
+import app.animego.inc.core.player.PlaybackQueueItem
 import app.animego.inc.core.player.PlaybackService
 import app.animego.inc.ui.components.EmptyState
 import app.animego.inc.ui.components.LoadingState
@@ -230,7 +237,18 @@ fun PlayerScreen(
     onOpenDetail: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    val overlayPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)) {
+            FloatingPlayerService.start(context)
+        } else {
+            Toast.makeText(context, "izin floating player belum diberikan", Toast.LENGTH_LONG).show()
+        }
+    }
     val player = remember { PlaybackEngine.player(context) }
+    val overlayActive by PlaybackEngine.overlayActive.collectAsState()
     var anime by remember { mutableStateOf<Anime?>(null) }
     var activeEpisode by remember { mutableStateOf(episode) }
     var activeTitle by remember { mutableStateOf(title) }
@@ -244,12 +262,34 @@ fun PlayerScreen(
     var error by remember { mutableStateOf("") }
     var playing by remember { mutableStateOf(player.isPlaying) }
     var currentPosition by remember { mutableFloatStateOf(0f) }
+    var seekPreview by remember(activeSource) { mutableFloatStateOf(Float.NaN) }
     var duration by remember { mutableFloatStateOf(0f) }
     var speed by remember { mutableFloatStateOf(1f) }
     var muted by remember { mutableStateOf(player.volume == 0f) }
-    var fullscreen by remember { mutableStateOf(false) }
-    var fullscreenPortrait by remember { mutableStateOf(false) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
+    var fullscreenPortrait by rememberSaveable { mutableStateOf(false) }
     var lastAutoNextIndex by remember { mutableStateOf(-1) }
+
+    val enterFullscreen: (Boolean) -> Unit = { portrait ->
+        fullscreenPortrait = portrait
+        activity?.requestedOrientation = if (portrait) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        fullscreen = true
+    }
+    val launchFloatingPlayer = {
+        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(context)) {
+            val settingsIntent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
+            overlayPermissionLauncher.launch(settingsIntent)
+        } else {
+            FloatingPlayerService.start(context)
+        }
+    }
 
     BackHandler(enabled = fullscreen) { fullscreen = false }
 
@@ -312,6 +352,15 @@ fun PlayerScreen(
     DisposableEffect(player, episodes, currentIndex, offline, activeTitle, activeSlug, activeCover) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                val snapshot = PlaybackEngine.snapshot.value
+                if (snapshot.source.isNotBlank()) {
+                    activeTitle = snapshot.title
+                    activeEpisode = snapshot.episode
+                    activeSource = snapshot.source
+                    episodes.indexOfFirst { it.url == snapshot.source }.takeIf { it >= 0 }?.let { currentIndex = it }
+                }
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 duration = (player.duration.takeIf { it > 0 } ?: 0L).toFloat()
                 if (playbackState == Player.STATE_ENDED && !offline && currentIndex in 0 until episodes.lastIndex && lastAutoNextIndex != currentIndex) {
@@ -344,34 +393,68 @@ fun PlayerScreen(
             currentPosition = player.currentPosition.coerceAtLeast(0L).toFloat()
             duration = player.duration.takeIf { it > 0 }?.toFloat() ?: 0f
             speed = player.playbackParameters.speed
+            muted = player.volume <= 0f
             delay(500L)
         }
     }
 
-    DisposableEffect(fullscreen, fullscreenPortrait) {
-        val activity = context as? Activity
+    // Save the pre-fullscreen orientation across any Activity recreation.
+    // Otherwise a configuration change can reset `fullscreen` and immediately
+    // put the player back into the normal portrait screen.
+    val originalOrientation = rememberSaveable {
+        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    val currentConfiguration = androidx.compose.ui.platform.LocalConfiguration.current
+    LaunchedEffect(activity, fullscreen, fullscreenPortrait, currentConfiguration.orientation) {
         if (activity != null) {
-            if (fullscreen) {
-                activity.requestedOrientation = if (fullscreenPortrait) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                WindowCompat.getInsetsController(activity.window, activity.window.decorView).hide(WindowInsetsCompat.Type.systemBars())
-            } else {
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                WindowCompat.getInsetsController(activity.window, activity.window.decorView).show(WindowInsetsCompat.Type.systemBars())
+            val requested = when {
+                fullscreen && fullscreenPortrait -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                fullscreen -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> originalOrientation
+            }
+            if (activity.requestedOrientation != requested) {
+                activity.requestedOrientation = requested
+            }
+            val insetsController = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            if (fullscreen) insetsController.hide(WindowInsetsCompat.Type.systemBars())
+            else insetsController.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    DisposableEffect(activity) {
+        onDispose {
+            // During a configuration-driven Activity recreation, do not restore
+            // portrait on the outgoing instance; the saved fullscreen state on
+            // the incoming Activity will re-apply the requested orientation.
+            if (activity != null && !activity.isChangingConfigurations) {
+                activity.requestedOrientation = originalOrientation
+                runCatching {
+                    WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+                        .show(WindowInsetsCompat.Type.systemBars())
+                }
             }
         }
-        onDispose {
-            if (activity != null) {
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                WindowCompat.getInsetsController(activity.window, activity.window.decorView).show(WindowInsetsCompat.Type.systemBars())
-            }
+    }
+
+    LaunchedEffect(slug, offline) {
+        // A new player route must not inherit the previous anime's episode queue.
+        PlaybackEngine.setQueue(emptyList())
+    }
+    LaunchedEffect(episodes, currentIndex, activeSource) {
+        if (episodes.isNotEmpty() && !offline) {
+            PlaybackEngine.setQueue(
+                episodes.map { PlaybackQueueItem(it.name, it.url) },
+                currentIndex
+            )
+        } else if (offline) {
+            PlaybackEngine.setQueue(emptyList())
         }
     }
 
     if (fullscreen) {
         Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             AndroidView(
-                factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = false; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING) } },
-                update = { it.player = player },
+                factory = { ctx -> createScreenPlayerView(ctx, player, attach = !overlayActive) },
+                update = { bindScreenPlayerView(it, player, attach = !overlayActive) },
                 modifier = Modifier.fillMaxSize()
             )
             if (loading) CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -384,6 +467,9 @@ fun PlayerScreen(
                     Text(activeTitle, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     Text(activeEpisode, color = Color.LightGray, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 }
+                IconButton(onClick = launchFloatingPlayer) {
+                    Icon(Lucide.PictureInPicture2, contentDescription = "floating player", tint = Color.White)
+                }
                 IconButton(onClick = { fullscreen = false }) {
                     Icon(Lucide.X, contentDescription = "keluar fullscreen", tint = Color.White)
                 }
@@ -395,29 +481,47 @@ fun PlayerScreen(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC090910)).padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Slider(
-                    value = if (duration > 0) (currentPosition / duration).coerceIn(0f, 1f) else 0f,
-                    onValueChange = { if (duration > 0) currentPosition = it * duration },
-                    onValueChangeFinished = { player.seekTo(currentPosition.toLong()) }
+                    value = if (duration > 0) {
+                        ((if (seekPreview.isFinite()) seekPreview else currentPosition) / duration).coerceIn(0f, 1f)
+                    } else 0f,
+                    onValueChange = { if (duration > 0) seekPreview = it * duration },
+                    onValueChangeFinished = {
+                        if (seekPreview.isFinite()) {
+                            currentPosition = seekPreview
+                            player.seekTo(seekPreview.toLong())
+                        }
+                        seekPreview = Float.NaN
+                    }
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatClock(currentPosition / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                    Text(formatClock((if (seekPreview.isFinite()) seekPreview else currentPosition) / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                     Text(formatClock(duration / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                     IconButton(onClick = { player.seekBack() }) { Icon(Lucide.SkipBack, contentDescription = "mundur 10 detik", tint = Color.White) }
+                    IconButton(
+                        onClick = { if (currentIndex > 0) playEpisode(currentIndex - 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) },
+                        enabled = currentIndex > 0 && episodes.isNotEmpty()
+                    ) { Text("prev", color = if (currentIndex > 0) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
                     IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
                         Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "putar atau jeda", tint = Color.White)
                     }
+                    IconButton(
+                        onClick = { if (currentIndex >= 0 && currentIndex < episodes.lastIndex) playEpisode(currentIndex + 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) },
+                        enabled = currentIndex >= 0 && currentIndex < episodes.lastIndex
+                    ) { Text("next", color = if (currentIndex >= 0 && currentIndex < episodes.lastIndex) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
                     IconButton(onClick = { player.seekForward() }) { Icon(Lucide.SkipForward, contentDescription = "maju 10 detik", tint = Color.White) }
                     IconButton(onClick = { muted = !muted; player.volume = if (muted) 0f else 1f }) {
                         Icon(if (muted) Lucide.VolumeX else Lucide.Volume2, contentDescription = "mute", tint = Color.White)
                     }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     TextButton(onClick = {
                         val rates = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
                         val next = rates[(rates.indexOf(speed).coerceAtLeast(0) + 1) % rates.size]
                         player.setPlaybackSpeed(next)
                         speed = next
-                    }) { Text("${speed}×", color = Color.White) }
+                    }) { Text("kecepatan ${speed}×", color = Color.White) }
                 }
             }
         }
@@ -429,11 +533,14 @@ fun PlayerScreen(
                     Text(activeTitle.ifBlank { "AnimeGo player" }, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     Text(activeEpisode, color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                 }
-                IconButton(onClick = { fullscreenPortrait = false; fullscreen = true }) { Icon(Lucide.Maximize, contentDescription = "fullscreen landscape", tint = Color.White) }
+                IconButton(onClick = { enterFullscreen(false) }) { Icon(Lucide.Maximize, contentDescription = "fullscreen landscape", tint = Color.White) }
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
-                AndroidView(factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = false; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING) } },
-                    update = { it.player = player }, modifier = Modifier.fillMaxSize())
+                AndroidView(
+                    factory = { ctx -> createScreenPlayerView(ctx, player, attach = !overlayActive) },
+                    update = { bindScreenPlayerView(it, player, attach = !overlayActive) },
+                    modifier = Modifier.fillMaxSize()
+                )
                 if (loading) CircularProgressIndicator()
                 if (error.isNotBlank()) Text(error, color = Color.White, modifier = Modifier.padding(18.dp))
             }
@@ -449,15 +556,23 @@ fun PlayerScreen(
                             Icon(if (muted) Lucide.VolumeX else Lucide.Volume2, contentDescription = if (muted) "aktifkan suara" else "senyapkan", tint = Color.White)
                         }
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = {
-                            if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(context)) {
-                                context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
-                            } else FloatingPlayerService.start(context)
-                        }) { Icon(Lucide.PictureInPicture2, contentDescription = "floating player", tint = Color.White) }
+                        IconButton(onClick = launchFloatingPlayer) {
+                            Icon(Lucide.PictureInPicture2, contentDescription = "floating player", tint = Color.White)
+                        }
                     }
-                    Slider(value = if (duration > 0) (currentPosition / duration).coerceIn(0f, 1f) else 0f, onValueChange = { if (duration > 0) currentPosition = it * duration }, onValueChangeFinished = { player.seekTo(currentPosition.toLong()) })
+                    Slider(
+                        value = if (duration > 0) ((if (seekPreview.isFinite()) seekPreview else currentPosition) / duration).coerceIn(0f, 1f) else 0f,
+                        onValueChange = { if (duration > 0) seekPreview = it * duration },
+                        onValueChangeFinished = {
+                            if (seekPreview.isFinite()) {
+                                currentPosition = seekPreview
+                                player.seekTo(seekPreview.toLong())
+                            }
+                            seekPreview = Float.NaN
+                        }
+                    )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatClock(currentPosition / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                        Text(formatClock((if (seekPreview.isFinite()) seekPreview else currentPosition) / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                         Text(formatClock(duration / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -471,8 +586,8 @@ fun PlayerScreen(
                         OutlinedButton(onClick = { if (currentIndex >= 0 && currentIndex < episodes.lastIndex) playEpisode(currentIndex + 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) }, enabled = currentIndex >= 0 && currentIndex < episodes.lastIndex, modifier = Modifier.weight(1f)) { Text("berikutnya") }
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { fullscreenPortrait = true; fullscreen = true }, modifier = Modifier.weight(1f)) { Text("fullscreen portrait") }
-                        OutlinedButton(onClick = { fullscreenPortrait = false; fullscreen = true }, modifier = Modifier.weight(1f)) { Text("fullscreen landscape") }
+                        OutlinedButton(onClick = { enterFullscreen(true) }, modifier = Modifier.weight(1f)) { Text("fullscreen portrait") }
+                        OutlinedButton(onClick = { enterFullscreen(false) }, modifier = Modifier.weight(1f)) { Text("fullscreen landscape") }
                     }
                     if (!offline && episodes.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -528,4 +643,25 @@ private fun playEpisode(
     if (episode.url.isBlank()) return
     PlaybackEngine.play(context, episode.url, title, episode.name, slug, cover, 0L, false)
     onUpdate(index, episode.name, episode.url)
+}
+
+
+private fun createScreenPlayerView(context: Context, player: Player, attach: Boolean): PlayerView =
+    PlayerView(context).apply {
+        useController = false
+        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+        bindScreenPlayerView(this, player, attach)
+    }
+
+private fun bindScreenPlayerView(view: PlayerView, player: Player, attach: Boolean) {
+    val target = if (attach) player else null
+    if (view.player === target) return
+    runCatching { view.player = target }
+        .onFailure { Log.e("AnimeGoPlayer", "gagal memindahkan output video ke layar utama", it) }
+}
+
+private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

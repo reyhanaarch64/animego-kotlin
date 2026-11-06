@@ -23,8 +23,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +46,10 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Pause
 import com.composables.icons.lucide.Play
 import com.composables.icons.lucide.X
+import com.composables.icons.lucide.SkipBack
+import com.composables.icons.lucide.SkipForward
+import com.composables.icons.lucide.Volume2
+import com.composables.icons.lucide.VolumeX
 
 @Composable
 fun ScreenHeader(
@@ -176,32 +186,75 @@ fun PlaybackMiniPlayer(
     playback: PlaybackSnapshot,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSkipBack: () -> Unit,
+    onSkipForward: () -> Unit,
+    onMuteToggle: () -> Unit,
+    onSpeedCycle: () -> Unit,
+    onPreviousEpisode: () -> Unit,
+    onNextEpisode: () -> Unit,
+    canPreviousEpisode: Boolean,
+    canNextEpisode: Boolean
 ) {
+    var scrubProgress by remember(playback.source) { mutableStateOf<Float?>(null) }
+    val duration = playback.durationMs.coerceAtLeast(0L)
+    val actualProgress = if (duration > 0L) (playback.positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 4.dp
     ) {
-        Row(
-            Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(Modifier.size(width = 54.dp, height = 44.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
-                if (playback.cover.isNotBlank()) {
-                    AsyncImage(playback.cover, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Crop)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 7.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box(Modifier.size(width = 48.dp, height = 42.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surface)) {
+                    if (playback.cover.isNotBlank()) {
+                        AsyncImage(playback.cover, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Crop)
+                    }
                 }
+                Column(Modifier.weight(1f).clickable(onClick = onOpen)) {
+                    Text(playback.title.ifBlank { "AnimeGo" }, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                    Text(playback.episode.ifBlank { if (playback.offline) "video offline" else "sedang diputar" }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                }
+                IconButton(onClick = onSkipBack) {
+                    Icon(Lucide.SkipBack, contentDescription = "mundur 10 detik")
+                }
+                IconButton(onClick = onToggle) {
+                    Icon(if (playback.isPlaying) Lucide.Pause else Lucide.Play, contentDescription = if (playback.isPlaying) "jeda" else "putar")
+                }
+                IconButton(onClick = onSkipForward) {
+                    Icon(Lucide.SkipForward, contentDescription = "maju 10 detik")
+                }
+                IconButton(onClick = onClose) { Icon(Lucide.X, contentDescription = "tutup pemutar") }
             }
-            Column(Modifier.weight(1f)) {
-                Text(playback.title.ifBlank { "AnimeGo" }, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                Text(playback.episode.ifBlank { if (playback.offline) "video offline" else "sedang diputar" }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(formatClock(playback.positionMs / 1000.0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Slider(
+                    modifier = Modifier.weight(1f).height(28.dp).padding(horizontal = 6.dp),
+                    value = scrubProgress ?: actualProgress,
+                    onValueChange = { scrubProgress = it },
+                    onValueChangeFinished = {
+                        scrubProgress?.let { onSeek((duration * it).toLong()) }
+                        scrubProgress = null
+                    },
+                    enabled = duration > 0L
+                )
+                Text(formatClock(playback.durationMs / 1000.0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onToggle) {
-                Icon(if (playback.isPlaying) Lucide.Pause else Lucide.Play, contentDescription = if (playback.isPlaying) "jeda" else "putar")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onPreviousEpisode, enabled = canPreviousEpisode) { Text("episode −") }
+                TextButton(onClick = onNextEpisode, enabled = canNextEpisode) { Text("episode +") }
+                IconButton(onClick = onMuteToggle) {
+                    Icon(if (playback.volume <= 0f) Lucide.VolumeX else Lucide.Volume2, contentDescription = if (playback.volume <= 0f) "aktifkan suara" else "mute")
+                }
+                TextButton(onClick = onSpeedCycle) { Text("${playback.speed}×") }
+                TextButton(onClick = onOpen) { Text("buka") }
             }
-            IconButton(onClick = onClose) { Icon(Lucide.X, contentDescription = "tutup pemutar") }
         }
     }
 }
