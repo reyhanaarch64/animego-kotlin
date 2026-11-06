@@ -106,7 +106,7 @@ object PlaybackEngine {
             player.setMediaItem(item)
             player.prepare()
             if (positionMs > 0) player.seekTo(positionMs)
-        } else if (positionMs > 0 && player.currentPosition == 0L) {
+        } else if (player.playbackState == Player.STATE_ENDED || (positionMs > 0 && player.currentPosition == 0L)) {
             player.seekTo(positionMs)
         }
         player.playWhenReady = true
@@ -152,10 +152,49 @@ object PlaybackEngine {
         return true
     }
 
-    fun toggle(context: Context) {
+    /**
+     * Main-screen / fullscreen / mini-player toggle.
+     * Pausing here must tear down both playback foreground services while keeping
+     * the ExoPlayer instance and current media item alive for an in-app resume.
+     */
+    fun toggle(context: Context) = toggleFromUi(context)
+
+    fun isPlaybackRequested(player: Player): Boolean =
+        player.playbackState != Player.STATE_ENDED && (player.playWhenReady || player.isPlaying)
+
+    fun toggleFromUi(context: Context) {
+        val appContext = context.applicationContext
+        val player = player(appContext)
+        val wantsPlayback = isPlaybackRequested(player)
+        if (wantsPlayback) {
+            player.pause()
+            player.playWhenReady = false
+            publish(false)
+            appContext.stopService(Intent(appContext, FloatingPlayerService::class.java))
+            appContext.stopService(Intent(appContext, PlaybackService::class.java))
+        } else {
+            if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+            player.play()
+            publish()
+            PlaybackService.start(appContext)
+        }
+    }
+
+    /**
+     * Popup pause is intentionally different: the foreground playback service
+     * stays alive while the floating window is still open, even while paused.
+     */
+    fun toggleFromPopup(context: Context) {
         val player = player(context)
-        if (player.isPlaying) player.pause() else player.play()
+        if (isPlaybackRequested(player)) {
+            player.pause()
+            player.playWhenReady = false
+        } else {
+            if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+            player.play()
+        }
         publish()
+        PlaybackService.start(context.applicationContext)
     }
 
     fun clear() {

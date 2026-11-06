@@ -106,3 +106,11 @@ aplikasi sumber memiliki fallback fetch melalui WebView apabila server mengembal
 ## catatan pengujian
 
 source dan struktur proyek diperiksa secara statis. environment penyusunan ZIP ini tidak menyediakan Android SDK/Gradle distribution dan tidak dapat mengakses dependency repository, jadi APK tidak dapat dikompilasi atau diuji pada perangkat di sini. validasi kompilasi akhir tetap perlu dijalankan melalui GitHub Actions dan pengujian runtime di perangkat Android.
+
+## playback lifecycle update
+
+- pause dari player utama, fullscreen, mini-player, atau notifikasi menghentikan `PlaybackService` dan `FloatingPlayerService`, tetapi tidak menghapus media dari `PlaybackEngine`; aplikasi tetap dapat dilanjutkan dari posisi terakhir.
+- pause dari kontrol floating popup hanya menjeda ExoPlayer. `PlaybackService` dan popup tetap aktif sampai popup ditutup.
+- menutup popup ketika video sedang pause juga menghentikan `PlaybackService`; menutup popup ketika video masih berjalan hanya menghilangkan overlay dan playback berlanjut di background.
+- ketika item benar-benar mencapai `STATE_ENDED`, service menunggu sebentar untuk memberi kesempatan pada auto-next. jika tidak ada item baru yang dimulai, service dan popup dihentikan.
+- semua tombol popup memakai glyph tanpa background individual, dan transport control menggunakan jarak dp tetap sehingga tidak menyebar ketika ukuran jendela diperbesar.

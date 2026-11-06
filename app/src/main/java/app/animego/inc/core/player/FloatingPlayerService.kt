@@ -115,7 +115,7 @@ class FloatingPlayerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_CLOSE) {
-            stopSelf()
+            closeFloatingPlayer()
             return START_NOT_STICKY
         }
 
@@ -169,8 +169,15 @@ class FloatingPlayerService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(progressTicker)
-        runCatching { PlaybackEngine.player(this).removeListener(playerListener) }
+        val player = runCatching { PlaybackEngine.player(this) }.getOrNull()
+        runCatching { player?.removeListener(playerListener) }
         removeOverlay()
+        // Closing a paused popup ends the background playback service too.
+        // Closing a playing popup only removes the overlay; audio/video playback
+        // continues in the background under PlaybackService.
+        if (player == null || !PlaybackEngine.isPlaybackRequested(player)) {
+            PlaybackService.stop(this)
+        }
         runCatching { stopForegroundCompat() }
         super.onDestroy()
     }
@@ -248,7 +255,7 @@ class FloatingPlayerService : Service() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(7), dp(3), dp(5), dp(3))
-            background = roundedBackground(AndroidColor.argb(178, 8, 9, 15), dp(9).toFloat())
+            background = null
             setOnClickListener { toggleControls() }
         }
         val titleColumn = LinearLayout(viewContext).apply {
@@ -282,7 +289,7 @@ class FloatingPlayerService : Service() {
         speedButton = controlButton("1×") { cycleSpeed() }.apply { textSize = 8f }
         header.addView(speedButton, LinearLayout.LayoutParams(dp(38), dp(28)).apply { leftMargin = dp(3) })
         header.addView(actionButton("↗") { openPlayer() }, LinearLayout.LayoutParams(dp(30), dp(28)).apply { leftMargin = dp(3) })
-        header.addView(actionButton("×") { stopSelf() }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { leftMargin = dp(3) })
+        header.addView(actionButton("×") { closeFloatingPlayer() }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { leftMargin = dp(3) })
         controls.addView(
             header,
             FrameLayout.LayoutParams(-1, dp(34), Gravity.TOP).apply {
@@ -294,29 +301,32 @@ class FloatingPlayerService : Service() {
         val transport = LinearLayout(viewContext).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(4), dp(3), dp(4), dp(3))
-            background = roundedBackground(AndroidColor.argb(150, 8, 9, 15), dp(24).toFloat())
-            setOnClickListener { toggleControls() }
+            // Keep transport controls clustered at a fixed dp spacing. Resizing
+            // the window changes the video rectangle, not the gaps between icons.
+            setPadding(0, 0, 0, 0)
+            background = null
+            clipChildren = false
+            clipToPadding = false
         }
         previousButton = controlButton("|◀") {
             PlaybackEngine.skipQueue(this@FloatingPlayerService, -1)
         }
-        transport.addView(previousButton, LinearLayout.LayoutParams(dp(34), dp(36)))
+        transport.addView(previousButton, LinearLayout.LayoutParams(dp(30), dp(40)).apply { marginEnd = dp(3) })
         transport.addView(controlButton("−10") {
             PlaybackEngine.player(this@FloatingPlayerService).seekBack()
-        }, LinearLayout.LayoutParams(dp(38), dp(36)))
-        playButton = controlButton("Ⅱ") { togglePlayback() }.apply { textSize = 17f }
-        transport.addView(playButton, LinearLayout.LayoutParams(dp(42), dp(38)))
+        }, LinearLayout.LayoutParams(dp(34), dp(40)).apply { marginEnd = dp(3) })
+        playButton = controlButton("▶") { togglePlayback() }.apply { textSize = 20f }
+        transport.addView(playButton, LinearLayout.LayoutParams(dp(38), dp(42)).apply { marginEnd = dp(3) })
         transport.addView(controlButton("+10") {
             PlaybackEngine.player(this@FloatingPlayerService).seekForward()
-        }, LinearLayout.LayoutParams(dp(38), dp(36)))
+        }, LinearLayout.LayoutParams(dp(34), dp(40)).apply { marginEnd = dp(3) })
         nextButton = controlButton("▶|") {
             PlaybackEngine.skipQueue(this@FloatingPlayerService, 1)
         }
-        transport.addView(nextButton, LinearLayout.LayoutParams(dp(34), dp(36)))
+        transport.addView(nextButton, LinearLayout.LayoutParams(dp(30), dp(40)))
         controls.addView(
             transport,
-            FrameLayout.LayoutParams(-2, dp(44), Gravity.CENTER)
+            FrameLayout.LayoutParams(-2, dp(46), Gravity.CENTER)
         )
 
         // Seekbar and time are part of the bottom video overlay, not a row
@@ -325,7 +335,7 @@ class FloatingPlayerService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(2), dp(8), dp(4))
-            background = roundedBackground(AndroidColor.argb(188, 8, 9, 15), dp(8).toFloat())
+            background = null
             setOnClickListener { toggleControls() }
         }
         val bar = SeekBar(viewContext).apply {
@@ -453,9 +463,9 @@ class FloatingPlayerService : Service() {
     }
 
     private fun togglePlayback() {
-        val player = PlaybackEngine.player(this)
-        if (player.isPlaying) player.pause() else player.play()
+        PlaybackEngine.toggleFromPopup(this)
         refreshButtons()
+        refreshNotification()
     }
 
     private fun toggleMute() {
@@ -478,7 +488,7 @@ class FloatingPlayerService : Service() {
             speedIndex = speeds.indices.minByOrNull { kotlin.math.abs(speeds[it] - player.playbackParameters.speed) } ?: 1
         }
         isMuted = player.volume <= 0f
-        playButton?.text = if (player.isPlaying) "Ⅱ" else "▶"
+        playButton?.text = if (PlaybackEngine.isPlaybackRequested(player)) "Ⅱ" else "▶"
         muteButton?.text = if (isMuted) "SOUND" else "MUTE"
         val speedText = speeds[speedIndex].let { value ->
             if (value % 1f == 0f) value.toInt().toString()
@@ -519,6 +529,14 @@ class FloatingPlayerService : Service() {
 
     private fun openPlayer() {
         startActivity(openPlayerIntent())
+        closeFloatingPlayer()
+    }
+
+    private fun closeFloatingPlayer() {
+        val player = runCatching { PlaybackEngine.player(this) }.getOrNull()
+        if (player == null || !PlaybackEngine.isPlaybackRequested(player)) {
+            PlaybackService.stop(this)
+        }
         stopSelf()
     }
 
@@ -664,10 +682,16 @@ class FloatingPlayerService : Service() {
         setTextColor(AndroidColor.WHITE)
         textSize = 10f
         gravity = Gravity.CENTER
+        includeFontPadding = false
         isClickable = true
         isFocusable = false
-        background = roundedBackground(AndroidColor.rgb(43, 44, 58), dp(9).toFloat())
-        setPadding(dp(4), dp(5), dp(4), dp(5))
+        // Plain icon/text glyph: no individual button background or circle.
+        background = null
+        setPadding(0, 0, 0, 0)
+        minWidth = 0
+        minimumWidth = 0
+        minHeight = 0
+        minimumHeight = 0
         setOnClickListener { action() }
     }
 

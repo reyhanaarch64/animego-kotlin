@@ -474,7 +474,7 @@ fun PlayerScreen(
                     Icon(Lucide.X, contentDescription = "keluar fullscreen", tint = Color.White)
                 }
             }
-            IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }, modifier = Modifier.align(Alignment.Center)) {
+            IconButton(onClick = { PlaybackEngine.toggleFromUi(context) }, modifier = Modifier.align(Alignment.Center)) {
                 Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "putar atau jeda", tint = Color.White, modifier = Modifier.size(42.dp))
             }
             Column(
@@ -503,7 +503,7 @@ fun PlayerScreen(
                         onClick = { if (currentIndex > 0) playEpisode(currentIndex - 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) },
                         enabled = currentIndex > 0 && episodes.isNotEmpty()
                     ) { Text("prev", color = if (currentIndex > 0) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
-                    IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
+                    IconButton(onClick = { PlaybackEngine.toggleFromUi(context) }) {
                         Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "putar atau jeda", tint = Color.White)
                     }
                     IconButton(
@@ -548,7 +548,7 @@ fun PlayerScreen(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { player.seekBack() }) { Icon(Lucide.SkipBack, contentDescription = "mundur 10 detik", tint = Color.White) }
-                        IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(54.dp)) {
+                        IconButton(onClick = { PlaybackEngine.toggleFromUi(context) }, modifier = Modifier.size(54.dp)) {
                             Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "play pause", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                         }
                         IconButton(onClick = { player.seekForward() }) { Icon(Lucide.SkipForward, contentDescription = "maju 10 detik", tint = Color.White) }

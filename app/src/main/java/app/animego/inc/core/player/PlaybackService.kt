@@ -32,8 +32,14 @@ class PlaybackService : Service() {
         const val ACTION_NEXT_EPISODE = "app.animego.inc.PLAYBACK_NEXT_EPISODE"
 
         fun start(context: Context) {
-            val intent = Intent(context, PlaybackService::class.java)
-            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+            val app = context.applicationContext
+            val intent = Intent(app, PlaybackService::class.java)
+            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent) else app.startService(intent)
+        }
+
+        fun stop(context: Context) {
+            val app = context.applicationContext
+            app.stopService(Intent(app, PlaybackService::class.java))
         }
     }
 
@@ -49,12 +55,35 @@ class PlaybackService : Service() {
         }
     }
 
+    // Give the player screen's auto-next listener time to install the next item.
+    // If the item remains ended, playback is genuinely finished and both media
+    // foreground services must release their notifications/windows.
+    private val endedCleanup = Runnable {
+        val player = runCatching { PlaybackEngine.player(this@PlaybackService) }.getOrNull() ?: return@Runnable
+        if (player.playbackState == Player.STATE_ENDED) {
+            saveProgress()
+            stopService(Intent(this@PlaybackService, FloatingPlayerService::class.java))
+            stopForegroundCompat()
+            stopSelf()
+        }
+    }
+
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             updateNotification()
             if (!isPlaying) saveProgress()
+            if (isPlaying) handler.removeCallbacks(endedCleanup)
         }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            handler.removeCallbacks(endedCleanup)
+            if (playbackState == Player.STATE_ENDED) {
+                handler.postDelayed(endedCleanup, 1_200L)
+            }
+        }
+
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            handler.removeCallbacks(endedCleanup)
             updateNotification()
             saveProgress()
         }
@@ -70,7 +99,19 @@ class PlaybackService : Service() {
         when (intent?.action) {
             ACTION_TOGGLE -> {
                 val player = PlaybackEngine.player(this)
-                if (player.isPlaying) player.pause() else player.play()
+                if (PlaybackEngine.isPlaybackRequested(player)) {
+                    // A notification pause is an external pause, not a popup pause.
+                    player.pause()
+                    player.playWhenReady = false
+                    saveProgress()
+                    stopService(Intent(this, FloatingPlayerService::class.java))
+                    stopForegroundCompat()
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                } else {
+                    if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+                    player.play()
+                }
             }
             ACTION_SEEK_BACK -> PlaybackEngine.player(this).seekBack()
             ACTION_SEEK_FORWARD -> PlaybackEngine.player(this).seekForward()
@@ -80,7 +121,7 @@ class PlaybackService : Service() {
                 saveProgress()
                 stopService(Intent(this, FloatingPlayerService::class.java))
                 PlaybackEngine.clear()
-                stopForeground(true)
+                stopForegroundCompat()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -94,9 +135,20 @@ class PlaybackService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(progressTask)
+        handler.removeCallbacks(endedCleanup)
         saveProgress()
         runCatching { PlaybackEngine.player(this).removeListener(listener) }
+        runCatching { stopForegroundCompat() }
         super.onDestroy()
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -159,11 +211,11 @@ class PlaybackService : Service() {
             .setContentText(line)
             .setContentIntent(open)
             .setOnlyAlertOnce(true)
-            .setOngoing(player.isPlaying)
+            .setOngoing(true)
             .setProgress(1000, progress, duration <= 0L)
             .addAction(android.R.drawable.ic_media_previous, "Episode sebelumnya", previous)
             .addAction(android.R.drawable.ic_media_rew, "Mundur 10 detik", seekBack)
-            .addAction(if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (player.isPlaying) "Jeda" else "Putar", toggle)
+            .addAction(if (PlaybackEngine.isPlaybackRequested(player)) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (PlaybackEngine.isPlaybackRequested(player)) "Jeda" else "Putar", toggle)
             .addAction(android.R.drawable.ic_media_ff, "Maju 10 detik", seekForward)
             .addAction(android.R.drawable.ic_media_next, "Episode berikutnya", next)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Tutup", stop)
