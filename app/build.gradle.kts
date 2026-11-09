@@ -68,6 +68,7 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-compose:1.12.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
@@ -99,7 +100,6 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-database")
-    implementation("com.google.firebase:firebase-storage")
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-functions")
 

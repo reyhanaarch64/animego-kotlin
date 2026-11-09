@@ -1,17 +1,25 @@
 package app.animego.inc.core.firebase
 
-import android.net.Uri
+import android.content.Context
 import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.Query
-import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.Query
 import com.google.firebase.database.ServerValue
+import com.google.firebase.database.ValueEventListener
+import app.animego.inc.core.database.AnimeDatabase
+import java.util.UUID
 import kotlinx.coroutines.tasks.await
 
-class SocialRepository(private val firebase: FirebaseProvider) {
+class SocialRepository(
+    private val context: Context,
+    private val firebase: FirebaseProvider,
+    private val local: AnimeDatabase
+) {
     private val root get() = firebase.database.reference
     private fun uid(): String = firebase.auth.currentUser?.uid ?: error("login diperlukan")
-    private fun requireMember() { check(firebase.auth.currentUser != null && firebase.auth.currentUser?.isAnonymous == false) { "fitur ini memerlukan akun" } }
+    private fun requireMember() {
+        check(firebase.auth.currentUser != null && firebase.auth.currentUser?.isAnonymous == false) { "fitur ini memerlukan akun" }
+    }
 
     suspend fun updateProfile(username: String, displayName: String, bio: String) {
         requireMember()
@@ -19,10 +27,12 @@ class SocialRepository(private val firebase: FirebaseProvider) {
         require(clean.matches(Regex("[a-z0-9_]{3,20}"))) { "username 3–20 karakter: huruf, angka, underscore" }
         require(displayName.trim().length in 2..32)
         val id = uid()
-        val old = root.child("users").child(id).child("username").get().await().getValue(String::class.java).orEmpty()
+        val old = root.child("publicProfiles").child(id).child("username").get().await().getValue(String::class.java).orEmpty()
         val taken = root.child("usernames").child(clean).get().await()
         require(!taken.exists() || taken.getValue(String::class.java) == id) { "username sudah dipakai" }
         val updates = mutableMapOf<String, Any>(
+            "publicProfiles/$id/username" to clean, "publicProfiles/$id/displayName" to displayName.trim(),
+            "publicProfiles/$id/bio" to bio.take(160), "publicProfiles/$id/updatedAt" to ServerValue.TIMESTAMP,
             "users/$id/username" to clean, "users/$id/displayName" to displayName.trim(),
             "users/$id/bio" to bio.take(160), "users/$id/updatedAt" to ServerValue.TIMESTAMP,
             "usernames/$clean" to id
@@ -34,18 +44,20 @@ class SocialRepository(private val firebase: FirebaseProvider) {
     suspend fun searchUsers(prefix: String, limit: Int = 25): List<CloudUser> {
         val q = prefix.trim().lowercase()
         if (q.length < 2) return emptyList()
-        val snapshot = root.child("users").orderByChild("username").startAt(q).endAt(q + "\uf8ff").limitToFirst(limit).get().await()
+        val snapshot = root.child("publicProfiles").orderByChild("username").startAt(q).endAt(q + "\uf8ff").limitToFirst(limit).get().await()
         return snapshot.children.mapNotNull { it.getValue(CloudUser::class.java) }
     }
 
-    suspend fun getUser(userId: String): CloudUser? = root.child("users").child(userId).get().await().getValue(CloudUser::class.java)
+    suspend fun getUser(userId: String): CloudUser? = root.child("publicProfiles").child(userId).get().await().getValue(CloudUser::class.java)
 
     suspend fun follow(targetUid: String) {
         requireMember(); require(targetUid != uid())
         root.child("follows").child(uid()).child(targetUid).setValue(mapOf("createdAt" to ServerValue.TIMESTAMP)).await()
     }
 
-    suspend fun unfollow(targetUid: String) { requireMember(); root.child("follows").child(uid()).child(targetUid).removeValue().await() }
+    suspend fun unfollow(targetUid: String) {
+        requireMember(); root.child("follows").child(uid()).child(targetUid).removeValue().await()
+    }
 
     suspend fun sendFriendRequest(targetUid: String) {
         requireMember(); require(targetUid != uid())
@@ -100,7 +112,7 @@ class SocialRepository(private val firebase: FirebaseProvider) {
         val me = getUser(uid())
         root.child("comments").child(animeSlug).child(id).setValue(mapOf(
             "id" to id, "animeSlug" to animeSlug, "authorId" to uid(),
-            "authorName" to (me?.displayName ?: "pengguna"), "authorAvatar" to (me?.avatarUrl ?: ""),
+            "authorName" to (me?.displayName ?: "pengguna"), "authorAvatar" to (me?.avatarHash ?: ""),
             "text" to text.trim(), "parentId" to parentId,
             "createdAt" to ServerValue.TIMESTAMP, "likeCount" to 0
         )).await()
@@ -120,45 +132,125 @@ class SocialRepository(private val firebase: FirebaseProvider) {
         requireMember()
         val ref = root.child("commentLikes").child(animeSlug).child(commentId).child(uid())
         if (liked) ref.setValue(true).await() else ref.removeValue().await()
-        // likeCount is server-maintained by an RTDB trigger, never trusted from the client.
     }
 
     suspend fun createConversation(otherUid: String): String {
         requireMember(); require(otherUid != uid())
-        val ids = listOf(uid(), otherUid).sorted()
+        val currentUid = uid()
+        val ids = listOf(currentUid, otherUid).sorted()
         val id = "${ids[0]}_${ids[1]}"
+        val peer = getUser(otherUid)
+        local.upsertConversation(currentUid, LocalConversation(
+            id = id, otherUid = otherUid, otherDisplayName = peer?.displayName.orEmpty(),
+            otherUsername = peer?.username.orEmpty(), updatedAt = System.currentTimeMillis()
+        ))
         firebase.functions.getHttpsCallable("ensureConversation").call(mapOf("otherUid" to otherUid)).await()
         return id
     }
 
-    suspend fun markConversationRead(conversationId: String) {
+    suspend fun getConversations(): List<LocalConversation> {
         requireMember()
-        firebase.functions.getHttpsCallable("markConversationRead").call(mapOf("conversationId" to conversationId)).await()
+        val currentUid = uid()
+        try {
+            val snapshot = root.child("userConversations").child(currentUid).get().await()
+            snapshot.children.forEach { item ->
+                val id = item.key.orEmpty()
+                val otherUid = item.child("otherUid").getValue(String::class.java).orEmpty()
+                if (id.isBlank() || otherUid.isBlank()) return@forEach
+                val remoteProfile = getUser(otherUid)
+                val existing = local.getConversations(currentUid).firstOrNull { it.id == id }
+                local.upsertConversation(currentUid, LocalConversation(
+                    id = id, otherUid = otherUid,
+                    otherDisplayName = remoteProfile?.displayName ?: existing?.otherDisplayName.orEmpty(),
+                    otherUsername = remoteProfile?.username ?: existing?.otherUsername.orEmpty(),
+                    lastMessage = item.child("lastMessage").getValue(String::class.java) ?: existing?.lastMessage.orEmpty(),
+                    updatedAt = item.child("updatedAt").getValue(Long::class.java) ?: existing?.updatedAt ?: 0L,
+                    unreadCount = item.child("unreadCount").getValue(Int::class.java) ?: existing?.unreadCount ?: 0
+                ))
+            }
+        } catch (_: Exception) {
+            // Local conversation history is intentionally available when the network is unavailable.
+        }
+        return local.getConversations(currentUid)
+    }
+
+    suspend fun markConversationRead(conversationId: String, force: Boolean = false) {
+        requireMember()
+        val ownerUid = uid()
+        if (local.markConversationReadPending(ownerUid, conversationId, force)) {
+            ChatSyncScheduler.schedule(context)
+        }
     }
 
     suspend fun sendTextMessage(conversationId: String, text: String) {
         requireMember(); require(text.trim().length in 1..4000)
-        val ref = root.child("conversations").child(conversationId).child("messages").push()
-        ref.setValue(mapOf("id" to ref.key, "senderId" to uid(), "type" to "text", "text" to text.trim(),
-            "createdAt" to ServerValue.TIMESTAMP)).await()
+        val id = UUID.randomUUID().toString()
+        local.insertPendingMessage(uid(), conversationId, ChatMessage(
+            id = id, senderId = uid(), type = "text", text = text.trim(), createdAt = System.currentTimeMillis(), deliveryState = "pending"
+        ))
+        ChatSyncScheduler.schedule(context)
     }
 
     suspend fun sendAnimeMessage(conversationId: String, slug: String, title: String, cover: String, episodeId: String = "", episodeNumber: String = "") {
         requireMember(); require(slug.isNotBlank())
-        val ref = root.child("conversations").child(conversationId).child("messages").push()
+        val id = UUID.randomUUID().toString()
         val type = if (episodeId.isBlank()) "anime" else "episode"
-        ref.setValue(mapOf("id" to ref.key, "senderId" to uid(), "type" to type,
-            "animeSlug" to slug, "animeTitle" to title, "coverUrl" to cover,
-            "episodeId" to episodeId, "episodeNumber" to episodeNumber,
-            "createdAt" to ServerValue.TIMESTAMP)).await()
+        local.insertPendingMessage(uid(), conversationId, ChatMessage(
+            id = id, senderId = uid(), type = type, animeSlug = slug, animeTitle = title,
+            coverUrl = cover, episodeId = episodeId, episodeNumber = episodeNumber,
+            createdAt = System.currentTimeMillis(), deliveryState = "pending"
+        ))
+        ChatSyncScheduler.schedule(context)
     }
 
-    fun observeMessages(conversationId: String, onData: (List<ChatMessage>) -> Unit, onError: (String) -> Unit): Pair<Query, ValueEventListener> {
+    suspend fun syncPendingMessages() {
+        val user = firebase.auth.currentUser ?: return
+        if (user.isAnonymous) return
+        // Re-read the outbox after each batch so messages queued during a running worker are included.
+        while (true) {
+            val pending = local.getPendingMessages(user.uid)
+            if (pending.isEmpty()) break
+            pending.forEach { (conversationId, message) ->
+                local.setMessageState(user.uid, message.id, "sending")
+                try {
+                    val messageRef = root.child("conversations").child(conversationId).child("messages").child(message.id)
+                    if (!messageRef.get().await().exists()) {
+                        messageRef.setValue(mapOf(
+                            "id" to message.id, "senderId" to message.senderId, "type" to message.type,
+                            "text" to message.text, "animeSlug" to message.animeSlug, "animeTitle" to message.animeTitle,
+                            "coverUrl" to message.coverUrl, "episodeId" to message.episodeId,
+                            "episodeNumber" to message.episodeNumber, "createdAt" to message.createdAt
+                        )).await()
+                    }
+                    local.setMessageState(user.uid, message.id, "sent")
+                } catch (e: Exception) {
+                    local.setMessageState(user.uid, message.id, "failed")
+                    throw e
+                }
+            }
+        }
+
+        // Read receipts are also queued locally so opening a chat offline is not lost.
+        local.getPendingConversationReads(user.uid).forEach { conversationId ->
+            firebase.functions.getHttpsCallable("markConversationRead")
+                .call(mapOf("conversationId" to conversationId)).await()
+            local.markConversationReadSynced(user.uid, conversationId)
+        }
+    }
+
+    fun observeMessages(
+        conversationId: String,
+        onData: (List<ChatMessage>) -> Unit,
+        onError: (String) -> Unit
+    ): Pair<Query, ValueEventListener> {
+        val ownerUid = uid()
         val query = root.child("conversations").child(conversationId).child("messages")
-            .orderByChild("createdAt").limitToLast(40)
+            .orderByChild("createdAt").limitToLast(100)
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                onData(snapshot.children.mapNotNull { it.getValue(ChatMessage::class.java) })
+                val rows = snapshot.children.mapNotNull { it.getValue(ChatMessage::class.java) }
+                local.upsertMessages(ownerUid, conversationId, rows)
+                onData(local.getMessages(ownerUid, conversationId))
             }
             override fun onCancelled(error: DatabaseError) { onError(error.message) }
         }
@@ -170,19 +262,17 @@ class SocialRepository(private val firebase: FirebaseProvider) {
         pair.first.removeEventListener(pair.second)
     }
 
-    suspend fun getMessages(conversationId: String, limit: Int = 40): List<ChatMessage> =
-        root.child("conversations").child(conversationId).child("messages")
-            .orderByChild("createdAt").limitToLast(limit).get().await()
-            .children.mapNotNull { it.getValue(ChatMessage::class.java) }
+    fun getLocalMessages(conversationId: String, limit: Int = 100): List<ChatMessage> =
+        local.getMessages(uid(), conversationId, limit)
 
-    suspend fun uploadAvatar(uri: Uri): String {
-        requireMember()
-        val ref = firebase.storage.reference.child("avatars/${uid()}/profile")
-        ref.putFile(uri).await()
-        val url = ref.downloadUrl.await().toString()
-        root.child("users").child(uid()).child("avatarUrl").setValue(url).await()
-        return url
+    suspend fun getMessages(conversationId: String, limit: Int = 100): List<ChatMessage> {
+        val ownerUid = uid()
+        try {
+            val rows = root.child("conversations").child(conversationId).child("messages")
+                .orderByChild("createdAt").limitToLast(limit).get().await()
+                .children.mapNotNull { it.getValue(ChatMessage::class.java) }
+            local.upsertMessages(ownerUid, conversationId, rows)
+        } catch (_: Exception) { }
+        return local.getMessages(ownerUid, conversationId, limit)
     }
-
-    private fun DataSnapshot.string(key: String) = child(key).getValue(String::class.java).orEmpty()
 }

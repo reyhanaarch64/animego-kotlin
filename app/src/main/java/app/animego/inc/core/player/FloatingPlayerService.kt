@@ -129,13 +129,13 @@ class FloatingPlayerService : Service() {
             return START_NOT_STICKY
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "izin tampil di atas aplikasi lain belum diberikan", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.ui_327), Toast.LENGTH_LONG).show()
             stopForegroundCompat()
             stopSelf()
             return START_NOT_STICKY
         }
         if (PlaybackEngine.currentSource.isBlank()) {
-            Toast.makeText(this, "belum ada video yang diputar", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.ui_328), Toast.LENGTH_SHORT).show()
             stopForegroundCompat()
             stopSelf()
             return START_NOT_STICKY
@@ -157,7 +157,7 @@ class FloatingPlayerService : Service() {
             stopForegroundCompat()
             Toast.makeText(
                 this,
-                "gagal menampilkan floating player: ${error.message ?: error.javaClass.simpleName}",
+                getString(R.string.ui_329, error.message ?: error.javaClass.simpleName),
                 Toast.LENGTH_LONG
             ).show()
             stopSelf(startId)

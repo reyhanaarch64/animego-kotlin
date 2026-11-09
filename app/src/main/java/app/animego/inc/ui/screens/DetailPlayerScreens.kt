@@ -1,4 +1,5 @@
 package app.animego.inc.ui.screens
+import app.animego.inc.ui.uiText
 
 import android.app.Activity
 import android.content.Context
@@ -129,50 +130,50 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
     }
 
     when {
-        loading -> LoadingState("memuat detail anime...")
-        anime == null -> EmptyState("detail tidak tersedia", error)
+        loading -> LoadingState(app.animego.inc.ui.uiText("memuat detail anime..."))
+        anime == null -> EmptyState(app.animego.inc.ui.uiText("detail tidak tersedia"), error)
         else -> {
             val item = anime!!
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Lucide.ArrowLeft, contentDescription = "kembali") }
-                    Text("detail anime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    IconButton(onClick = onBack) { Icon(Lucide.ArrowLeft, contentDescription = app.animego.inc.ui.uiText("kembali")) }
+                    Text(app.animego.inc.ui.uiText("detail anime"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Box(Modifier.width(128.dp).aspectRatio(0.70f).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                         if (item.cover.isNotBlank()) AsyncImage(item.cover, contentDescription = item.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(item.type.ifBlank { "anime" }.uppercase(), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        Text(item.type.ifBlank { uiText("anime") }.uppercase(), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                         Text(item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
                         Text(listOf(item.year, item.status, item.score.takeIf { it.isNotBlank() }?.let { "★ $it" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { if (item.episodes.isNotEmpty()) onPlay(item.slug, 0) }, enabled = item.episodes.isNotEmpty(), modifier = Modifier.weight(1f)) {
-                                Icon(Lucide.Play, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("putar")
+                                Icon(Lucide.Play, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(app.animego.inc.ui.uiText("putar"))
                             }
-                            OutlinedButton(onClick = { onOpenComments(item.slug) }) { Text("komentar") }
+                            OutlinedButton(onClick = { onOpenComments(item.slug) }) { Text(app.animego.inc.ui.uiText("komentar")) }
                             OutlinedButton(onClick = {
                                 favorite = !favorite
                                 if (favorite) {
                                     graph.database.saveFavorite(item.slug, item.title, item.cover)
                                     if (graph.auth.isSignedIn) app.animego.inc.core.firebase.CloudSyncScheduler.syncSoon(context)
                                 } else scope.launch { graph.sync.removeFavorite(item.slug) }
-                            }) { Icon(Lucide.Heart, contentDescription = "favorit", tint = if (favorite) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface) }
+                            }) { Icon(Lucide.Heart, contentDescription = app.animego.inc.ui.uiText("favorit"), tint = if (favorite) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface) }
                         }
                     }
                 }
-                if (message.isNotBlank()) Text(message, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                if (message.isNotBlank()) Text(uiText(message), Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                 val genres = item.genreText.split(',').map { it.trim() }.filter { it.isNotBlank() }
                 if (genres.isNotEmpty()) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         genres.forEach { genre -> FilterChip(selected = false, onClick = { onOpenGenre(genre) }, label = { Text(genre) }) }
                     }
                 }
-                Text("sinopsis", Modifier.padding(start = 18.dp, top = 12.dp, bottom = 6.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(item.synopsis.ifBlank { "sinopsis tidak tersedia." }, Modifier.padding(horizontal = 18.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("informasi", Modifier.padding(start = 18.dp, top = 18.dp, bottom = 6.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(app.animego.inc.ui.uiText("sinopsis"), Modifier.padding(start = 18.dp, top = 12.dp, bottom = 6.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(item.synopsis.ifBlank { uiText("sinopsis tidak tersedia.") }, Modifier.padding(horizontal = 18.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(app.animego.inc.ui.uiText("informasi"), Modifier.padding(start = 18.dp, top = 18.dp, bottom = 6.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     listOf(
                         "status" to item.status,
@@ -189,8 +190,8 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("episode", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("${item.episodes.size} episode", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                    Text(app.animego.inc.ui.uiText("episode"), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(app.animego.inc.ui.uiTextFormat("jumlah episode", item.episodes.size), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
                 }
                 if (item.episodes.isNotEmpty()) {
                     OutlinedTextField(
@@ -198,26 +199,26 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
                         onValueChange = { episodeQuery = it },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         singleLine = true,
-                        placeholder = { Text("filter episode") }
+                        placeholder = { Text(app.animego.inc.ui.uiText("filter episode")) }
                     )
                 }
-                if (item.episodes.isEmpty()) EmptyState("episode belum tersedia", "server belum mengirimkan daftar episode untuk anime ini")
+                if (item.episodes.isEmpty()) EmptyState(app.animego.inc.ui.uiText("episode belum tersedia"), "server belum mengirimkan daftar episode untuk anime ini")
                 item.episodes.forEachIndexed { index, episode ->
                     if (episodeQuery.isBlank() || episode.name.contains(episodeQuery, ignoreCase = true)) {
                     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(14.dp)) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f).clickable { onPlay(item.slug, index) }) {
                                 Text(episode.name, fontWeight = FontWeight.SemiBold)
-                                Text("sentuh untuk memutar", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(app.animego.inc.ui.uiText("sentuh untuk memutar"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            IconButton(onClick = { onPlay(item.slug, index) }) { Icon(Lucide.Play, contentDescription = "putar episode") }
+                            IconButton(onClick = { onPlay(item.slug, index) }) { Icon(Lucide.Play, contentDescription = app.animego.inc.ui.uiText("putar episode")) }
                             IconButton(onClick = {
                                 try {
                                     val id = DownloadStorage.queue(context, graph.database, item, episode, graph.api.cookieHeader(episode.url))
                                     DownloadScheduler.enqueue(context, id)
                                     message = "${episode.name} masuk antrean unduhan"
                                 } catch (e: Exception) { message = e.message ?: "gagal menambahkan unduhan" }
-                            }) { Icon(Lucide.Download, contentDescription = "unduh episode") }
+                            }) { Icon(Lucide.Download, contentDescription = app.animego.inc.ui.uiText("unduh episode")) }
                         }
                     }
                     }
@@ -243,6 +244,7 @@ fun PlayerScreen(
     onOpenDetail: () -> Unit
 ) {
     val context = LocalContext.current
+    val downloadFailedText = uiText("gagal mengunduh")
     val activity = remember(context) { context.findActivity() }
     val overlayPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -250,7 +252,7 @@ fun PlayerScreen(
         if (Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)) {
             FloatingPlayerService.start(context)
         } else {
-            Toast.makeText(context, "izin floating player belum diberikan", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, uiText("izin floating player belum diberikan"), Toast.LENGTH_LONG).show()
         }
     }
     val player = remember { PlaybackEngine.player(context) }
@@ -464,7 +466,7 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize()
             )
             if (loading) CircularProgressIndicator(Modifier.align(Alignment.Center))
-            if (error.isNotBlank()) Text(error, color = Color.White, modifier = Modifier.align(Alignment.Center).padding(18.dp))
+            if (error.isNotBlank()) Text(uiText(error), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(18.dp))
             Row(
                 Modifier.align(Alignment.TopStart).fillMaxWidth().background(Color(0x99000000)).padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -474,14 +476,14 @@ fun PlayerScreen(
                     Text(activeEpisode, color = Color.LightGray, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 }
                 IconButton(onClick = launchFloatingPlayer) {
-                    Icon(Lucide.PictureInPicture2, contentDescription = "floating player", tint = Color.White)
+                    Icon(Lucide.PictureInPicture2, contentDescription = app.animego.inc.ui.uiText("floating player"), tint = Color.White)
                 }
                 IconButton(onClick = { fullscreen = false }) {
-                    Icon(Lucide.X, contentDescription = "keluar fullscreen", tint = Color.White)
+                    Icon(Lucide.X, contentDescription = app.animego.inc.ui.uiText("keluar fullscreen"), tint = Color.White)
                 }
             }
             IconButton(onClick = { PlaybackEngine.toggleFromUi(context) }, modifier = Modifier.align(Alignment.Center)) {
-                Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "putar atau jeda", tint = Color.White, modifier = Modifier.size(42.dp))
+                Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = app.animego.inc.ui.uiText("putar atau jeda"), tint = Color.White, modifier = Modifier.size(42.dp))
             }
             Column(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC090910)).padding(horizontal = 16.dp, vertical = 10.dp)
@@ -504,21 +506,21 @@ fun PlayerScreen(
                     Text(formatClock(duration / 1000.0), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-                    IconButton(onClick = { player.seekBack() }) { Icon(Lucide.SkipBack, contentDescription = "mundur 10 detik", tint = Color.White) }
+                    IconButton(onClick = { player.seekBack() }) { Icon(Lucide.SkipBack, contentDescription = app.animego.inc.ui.uiText("mundur 10 detik"), tint = Color.White) }
                     IconButton(
                         onClick = { if (currentIndex > 0) playEpisode(currentIndex - 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) },
                         enabled = currentIndex > 0 && episodes.isNotEmpty()
-                    ) { Text("prev", color = if (currentIndex > 0) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
+                    ) { Text(app.animego.inc.ui.uiText("prev"), color = if (currentIndex > 0) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
                     IconButton(onClick = { PlaybackEngine.toggleFromUi(context) }) {
-                        Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "putar atau jeda", tint = Color.White)
+                        Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = app.animego.inc.ui.uiText("putar atau jeda"), tint = Color.White)
                     }
                     IconButton(
                         onClick = { if (currentIndex >= 0 && currentIndex < episodes.lastIndex) playEpisode(currentIndex + 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) },
                         enabled = currentIndex >= 0 && currentIndex < episodes.lastIndex
-                    ) { Text("next", color = if (currentIndex >= 0 && currentIndex < episodes.lastIndex) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
-                    IconButton(onClick = { player.seekForward() }) { Icon(Lucide.SkipForward, contentDescription = "maju 10 detik", tint = Color.White) }
+                    ) { Text(app.animego.inc.ui.uiText("next"), color = if (currentIndex >= 0 && currentIndex < episodes.lastIndex) Color.White else Color.DarkGray, style = MaterialTheme.typography.labelSmall) }
+                    IconButton(onClick = { player.seekForward() }) { Icon(Lucide.SkipForward, contentDescription = app.animego.inc.ui.uiText("maju 10 detik"), tint = Color.White) }
                     IconButton(onClick = { muted = !muted; player.volume = if (muted) 0f else 1f }) {
-                        Icon(if (muted) Lucide.VolumeX else Lucide.Volume2, contentDescription = "mute", tint = Color.White)
+                        Icon(if (muted) Lucide.VolumeX else Lucide.Volume2, contentDescription = app.animego.inc.ui.uiText("mute"), tint = Color.White)
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -527,19 +529,19 @@ fun PlayerScreen(
                         val next = rates[(rates.indexOf(speed).coerceAtLeast(0) + 1) % rates.size]
                         player.setPlaybackSpeed(next)
                         speed = next
-                    }) { Text("kecepatan ${speed}×", color = Color.White) }
+                    }) { Text(app.animego.inc.ui.uiTextFormat("kecepatan", speed), color = Color.White) }
                 }
             }
         }
     } else {
         Column(Modifier.fillMaxSize().background(Color(0xFF090910)).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Lucide.ArrowLeft, contentDescription = "kembali", tint = Color.White) }
+                IconButton(onClick = onBack) { Icon(Lucide.ArrowLeft, contentDescription = app.animego.inc.ui.uiText("kembali"), tint = Color.White) }
                 Column(Modifier.weight(1f)) {
                     Text(activeTitle.ifBlank { "AnimeGo player" }, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     Text(activeEpisode, color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                 }
-                IconButton(onClick = { enterFullscreen(false) }) { Icon(Lucide.Maximize, contentDescription = "fullscreen landscape", tint = Color.White) }
+                IconButton(onClick = { enterFullscreen(false) }) { Icon(Lucide.Maximize, contentDescription = app.animego.inc.ui.uiText("fullscreen landscape"), tint = Color.White) }
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
                 AndroidView(
@@ -548,22 +550,22 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize()
                 )
                 if (loading) CircularProgressIndicator()
-                if (error.isNotBlank()) Text(error, color = Color.White, modifier = Modifier.padding(18.dp))
+                if (error.isNotBlank()) Text(uiText(error), color = Color.White, modifier = Modifier.padding(18.dp))
             }
             if (!loading && error.isBlank()) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { player.seekBack() }) { Icon(Lucide.SkipBack, contentDescription = "mundur 10 detik", tint = Color.White) }
+                        IconButton(onClick = { player.seekBack() }) { Icon(Lucide.SkipBack, contentDescription = app.animego.inc.ui.uiText("mundur 10 detik"), tint = Color.White) }
                         IconButton(onClick = { PlaybackEngine.toggleFromUi(context) }, modifier = Modifier.size(54.dp)) {
-                            Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = "play pause", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
+                            Icon(if (playing) Lucide.Pause else Lucide.Play, contentDescription = app.animego.inc.ui.uiText("play pause"), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                         }
-                        IconButton(onClick = { player.seekForward() }) { Icon(Lucide.SkipForward, contentDescription = "maju 10 detik", tint = Color.White) }
+                        IconButton(onClick = { player.seekForward() }) { Icon(Lucide.SkipForward, contentDescription = app.animego.inc.ui.uiText("maju 10 detik"), tint = Color.White) }
                         IconButton(onClick = { muted = !muted; player.volume = if (muted) 0f else 1f }) {
                             Icon(if (muted) Lucide.VolumeX else Lucide.Volume2, contentDescription = if (muted) "aktifkan suara" else "senyapkan", tint = Color.White)
                         }
                         Spacer(Modifier.weight(1f))
                         IconButton(onClick = launchFloatingPlayer) {
-                            Icon(Lucide.PictureInPicture2, contentDescription = "floating player", tint = Color.White)
+                            Icon(Lucide.PictureInPicture2, contentDescription = app.animego.inc.ui.uiText("floating player"), tint = Color.White)
                         }
                     }
                     Slider(
@@ -587,18 +589,18 @@ fun PlayerScreen(
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onOpenDetail, enabled = activeSlug.isNotBlank(), modifier = Modifier.weight(1f)) { Icon(Lucide.Info, contentDescription = null); Spacer(Modifier.width(5.dp)); Text("detail") }
-                        OutlinedButton(onClick = { if (currentIndex > 0) playEpisode(currentIndex - 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) }, enabled = currentIndex > 0 && episodes.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("sebelumnya") }
-                        OutlinedButton(onClick = { if (currentIndex >= 0 && currentIndex < episodes.lastIndex) playEpisode(currentIndex + 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) }, enabled = currentIndex >= 0 && currentIndex < episodes.lastIndex, modifier = Modifier.weight(1f)) { Text("berikutnya") }
+                        OutlinedButton(onClick = onOpenDetail, enabled = activeSlug.isNotBlank(), modifier = Modifier.weight(1f)) { Icon(Lucide.Info, contentDescription = null); Spacer(Modifier.width(5.dp)); Text(app.animego.inc.ui.uiText("detail")) }
+                        OutlinedButton(onClick = { if (currentIndex > 0) playEpisode(currentIndex - 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) }, enabled = currentIndex > 0 && episodes.isNotEmpty(), modifier = Modifier.weight(1f)) { Text(app.animego.inc.ui.uiText("sebelumnya")) }
+                        OutlinedButton(onClick = { if (currentIndex >= 0 && currentIndex < episodes.lastIndex) playEpisode(currentIndex + 1, episodes, context, activeTitle, activeSlug, activeCover, onUpdate = { idx, ep, url -> currentIndex = idx; activeEpisode = ep; activeSource = url }) }, enabled = currentIndex >= 0 && currentIndex < episodes.lastIndex, modifier = Modifier.weight(1f)) { Text(app.animego.inc.ui.uiText("berikutnya")) }
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { enterFullscreen(true) }, modifier = Modifier.weight(1f)) { Text("fullscreen portrait") }
-                        OutlinedButton(onClick = { enterFullscreen(false) }, modifier = Modifier.weight(1f)) { Text("fullscreen landscape") }
+                        OutlinedButton(onClick = { enterFullscreen(true) }, modifier = Modifier.weight(1f)) { Text(app.animego.inc.ui.uiText("fullscreen portrait")) }
+                        OutlinedButton(onClick = { enterFullscreen(false) }, modifier = Modifier.weight(1f)) { Text(app.animego.inc.ui.uiText("fullscreen landscape")) }
                     }
                     if (!offline && episodes.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("daftar episode", Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text("${episodes.size} episode", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                            Text(app.animego.inc.ui.uiText("daftar episode"), Modifier.weight(1f), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(app.animego.inc.ui.uiTextFormat("jumlah episode", episodes.size), color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
                         }
                         val animeForDownload = anime
                         episodes.forEachIndexed { epIndex, ep ->
@@ -613,7 +615,7 @@ fun PlayerScreen(
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(ep.name, color = Color.White, fontWeight = if (epIndex == currentIndex) FontWeight.Bold else FontWeight.Medium)
-                                        if (epIndex == currentIndex) Text("sedang diputar", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                        if (epIndex == currentIndex) Text(app.animego.inc.ui.uiText("sedang diputar"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                                     }
                                     IconButton(onClick = {
                                         val item = animeForDownload
@@ -621,16 +623,16 @@ fun PlayerScreen(
                                             runCatching {
                                                 val downloadId = DownloadStorage.queue(context, graph.database, item, ep, graph.api.cookieHeader(ep.url))
                                                 DownloadScheduler.enqueue(context, downloadId)
-                                                Toast.makeText(context, "episode masuk antrean unduhan", Toast.LENGTH_SHORT).show()
-                                            }.onFailure { Toast.makeText(context, it.message ?: "gagal mengunduh", Toast.LENGTH_SHORT).show() }
+                                                Toast.makeText(context, uiText("episode masuk antrean unduhan"), Toast.LENGTH_SHORT).show()
+                                            }.onFailure { Toast.makeText(context, it.message ?: downloadFailedText, Toast.LENGTH_SHORT).show() }
                                         }
-                                    }, enabled = animeForDownload != null) { Icon(Lucide.Download, contentDescription = "unduh episode", tint = Color.White) }
+                                    }, enabled = animeForDownload != null) { Icon(Lucide.Download, contentDescription = app.animego.inc.ui.uiText("unduh episode"), tint = Color.White) }
                                 }
                             }
                         }
                     }
                     if (!offline && activeSource.isNotBlank()) {
-                        Text("buka tautan stream", Modifier.clickable {
+                        Text(app.animego.inc.ui.uiText("buka tautan stream"), Modifier.clickable {
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(activeSource))) }
                         }.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                     }

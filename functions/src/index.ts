@@ -101,15 +101,15 @@ export const onCommentLikeDeleted = onValueDeleted({ ref: "/commentLikes/{slug}/
 export const onFollowCreated = onValueCreated({ ref: "/follows/{uid}/{targetUid}", region }, async (event) => {
   const { uid, targetUid } = event.params;
   await Promise.all([
-    db.ref(`users/${uid}/followingCount`).transaction(v => (Number(v) || 0) + 1),
-    db.ref(`users/${targetUid}/followerCount`).transaction(v => (Number(v) || 0) + 1)
+    db.ref(`publicProfiles/${uid}/followingCount`).transaction(v => (Number(v) || 0) + 1),
+    db.ref(`publicProfiles/${targetUid}/followerCount`).transaction(v => (Number(v) || 0) + 1)
   ]);
 });
 export const onFollowDeleted = onValueDeleted({ ref: "/follows/{uid}/{targetUid}", region }, async (event) => {
   const { uid, targetUid } = event.params;
   await Promise.all([
-    db.ref(`users/${uid}/followingCount`).transaction(v => Math.max(0, (Number(v) || 0) - 1)),
-    db.ref(`users/${targetUid}/followerCount`).transaction(v => Math.max(0, (Number(v) || 0) - 1))
+    db.ref(`publicProfiles/${uid}/followingCount`).transaction(v => Math.max(0, (Number(v) || 0) - 1)),
+    db.ref(`publicProfiles/${targetUid}/followerCount`).transaction(v => Math.max(0, (Number(v) || 0) - 1))
   ]);
 });
 

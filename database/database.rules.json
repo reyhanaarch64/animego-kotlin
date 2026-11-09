@@ -4,7 +4,7 @@
     ".write": false,
     "users": {
       "$uid": {
-        ".read": true,
+        ".read": "auth != null && auth.uid == $uid",
         ".write": "auth != null && auth.uid == $uid",
         ".validate": "newData.hasChildren(['uid']) && newData.child('uid').val() == $uid",
         "uid": {
@@ -22,8 +22,7 @@
       },
       ".indexOn": [
         "username"
-      ],
-      ".read": true
+      ]
     },
     "usernames": {
       "$username": {
@@ -130,6 +129,75 @@
       "$uid": {
         ".read": "auth != null && auth.uid == $uid",
         ".write": false
+      }
+    },
+    "publicProfiles": {
+      ".read": true,
+      ".indexOn": [
+        "username"
+      ],
+      "$uid": {
+        "uid": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.val() == $uid"
+        },
+        "username": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9_]{3,20}$/)"
+        },
+        "displayName": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 32"
+        },
+        "bio": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isString() && newData.val().length <= 160"
+        },
+        "createdAt": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!data.exists() || newData.val() == data.val()"
+        },
+        "updatedAt": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.val() <= now"
+        },
+        "avatarHash": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || (newData.isString() && newData.val().length == 64)"
+        },
+        "avatarUpdatedAt": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || newData.val() <= now"
+        },
+        "followerCount": {
+          ".write": false
+        },
+        "followingCount": {
+          ".write": false
+        }
+      }
+    },
+    "avatars": {
+      ".read": true,
+      "$uid": {
+        "data": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 204800)"
+        },
+        "meta": {
+          "hash": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length == 64)"
+          },
+          "mimeType": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || newData.val() == 'image/jpeg'"
+          },
+          "updatedAt": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || newData.val() <= now"
+          }
+        }
       }
     }
   }

@@ -15,6 +15,8 @@ import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -40,14 +42,18 @@ import app.animego.inc.ui.screens.AccountScreen
 import app.animego.inc.ui.screens.SocialHubScreen
 import app.animego.inc.ui.screens.ChatScreen
 import app.animego.inc.ui.screens.CommentsScreen
+import app.animego.inc.ui.screens.ProfileScreen
+import app.animego.inc.ui.screens.AuthScreen
+import app.animego.inc.ui.screens.MessagesScreen
+import app.animego.inc.ui.screens.GoogleAuthLaunchScreen
 import app.animego.inc.ui.theme.AnimeGoTheme
 import com.composables.icons.lucide.Compass
-import com.composables.icons.lucide.Download
-import com.composables.icons.lucide.Heart
 import com.composables.icons.lucide.House
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Users
+import com.composables.icons.lucide.MessageCircle
+import com.composables.icons.lucide.UserRound
 
 private data class BottomDestination(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -55,9 +61,13 @@ private data class BottomDestination(val route: String, val label: String, val i
 fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: Long = 0L) {
     val dark by graph.settings.darkTheme.collectAsState(initial = true)
     val dynamic by graph.settings.dynamicColor.collectAsState(initial = false)
+    val language by graph.settings.languageTag.collectAsState(initial = "system")
     val navController = rememberNavController()
     val context = LocalContext.current
     val playback by PlaybackEngine.snapshot.collectAsState()
+    LaunchedEffect(language) {
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(if (language == "system") "" else language))
+    }
     LaunchedEffect(playback.source) {
         if (playback.source.isNotBlank()) {
             while (true) {
@@ -73,14 +83,13 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
     }
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route.orEmpty()
-    val showBottomBar = route in setOf("home", "browse", "search", "favorites", "downloads", "social")
+    val showBottomBar = route in setOf("home", "browse", "search", "messages", "profile")
     val items = listOf(
         BottomDestination("home", "beranda", Lucide.House),
         BottomDestination("browse", "jelajah", Lucide.Compass),
         BottomDestination("search", "cari", Lucide.Search),
-        BottomDestination("favorites", "favorit", Lucide.Heart),
-        BottomDestination("downloads", "offline", Lucide.Download),
-        BottomDestination("social", "sosial", Lucide.Users)
+        BottomDestination("messages", "pesan", Lucide.MessageCircle),
+        BottomDestination("profile", "profil", Lucide.UserRound)
     )
 
     AnimeGoTheme(darkTheme = dark, dynamicColor = dynamic) {
@@ -136,8 +145,8 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
                                             restoreState = true
                                         }
                                     },
-                                    icon = { Icon(item.icon, contentDescription = item.label) },
-                                    label = { Text(item.label) }
+                                    icon = { Icon(item.icon, contentDescription = uiText(item.label)) },
+                                    label = { Text(uiText(item.label)) }
                                 )
                             }
                         }
@@ -164,6 +173,38 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
                 }
                 composable("search") {
                     SearchScreen(graph, onOpenAnime = { navController.navigate("detail/${Uri.encode(it)}") })
+                }
+                composable("messages") {
+                    MessagesScreen(graph, onChat = { id -> navController.navigate("chat/${Uri.encode(id)}") }, onLogin = { navController.navigate("login") })
+                }
+                composable("profile") {
+                    ProfileScreen(
+                        graph = graph,
+                        onLoginGoogle = { navController.navigate("googleLogin") },
+                        onLoginEmail = { navController.navigate("login") },
+                        onRegister = { navController.navigate("register") },
+                        onEditProfile = { navController.navigate("account") },
+                        onFavorites = { navController.navigate("favorites") },
+                        onDownloads = { navController.navigate("downloads") },
+                        onHistory = { navController.navigate("history") },
+                        onCommunity = { navController.navigate("social") },
+                        onSettings = { navController.navigate("settings") }
+                    )
+                }
+                composable("googleLogin") {
+                    GoogleAuthLaunchScreen(graph, registration = false, onSuccess = {
+                        navController.navigate("profile") { popUpTo("profile") { inclusive = true }; launchSingleTop = true }
+                    }, onBack = { navController.popBackStack() })
+                }
+                composable("login") {
+                    AuthScreen(graph, registration = false, onBack = { navController.popBackStack() },
+                        onSwitchMode = { navController.navigate("register") { popUpTo("login") { inclusive = true } } },
+                        onSuccess = { navController.navigate("profile") { popUpTo("profile") { inclusive = true }; launchSingleTop = true } })
+                }
+                composable("register") {
+                    AuthScreen(graph, registration = true, onBack = { navController.popBackStack() },
+                        onSwitchMode = { navController.navigate("login") { popUpTo("register") { inclusive = true } } },
+                        onSuccess = { navController.navigate("profile") { popUpTo("profile") { inclusive = true }; launchSingleTop = true } })
                 }
                 composable("favorites") {
                     FavoritesScreen(graph, onOpenAnime = { navController.navigate("detail/${Uri.encode(it)}") })
@@ -231,14 +272,14 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
                 }
                 composable("comments/{animeSlug}", arguments = listOf(navArgument("animeSlug") { type = NavType.StringType })) { entry ->
                     CommentsScreen(graph, entry.arguments?.getString("animeSlug").orEmpty(),
-                        onBack = { navController.popBackStack() }, onLogin = { navController.navigate("account") })
+                        onBack = { navController.popBackStack() }, onLogin = { navController.navigate("login") })
                 }
                 composable("account") {
                     AccountScreen(graph, onBack = { navController.popBackStack() })
                 }
                 composable("social") {
                     SocialHubScreen(graph,
-                        onAccount = { navController.navigate("account") },
+                        onAccount = { navController.navigate(if (graph.auth.isSignedIn) "account" else "login") },
                         onChat = { id -> navController.navigate("chat/${Uri.encode(id)}") })
                 }
                 composable("chat/{conversationId}", arguments = listOf(navArgument("conversationId") { type = NavType.StringType })) { entry ->

@@ -15,7 +15,7 @@ rewrite native AnimeGo berbasis Kotlin + Jetpack Compose. project ini tidak mema
 - Jetpack Compose, Material 3, Navigation Compose
 - Lucide Compose (`icons-lucide-cmp`) untuk icon vector
 - OkHttp 5 untuk WordPress REST API AnimeGo
-- Kotlin SQLiteOpenHelper; nama file, versi database, tabel, kolom, dan index mengikuti schema `animego.db` versi 3 dari aplikasi lama
+- Kotlin SQLiteOpenHelper; database `animego.db` versi 7 mempertahankan tabel inti dan menambahkan cache conversation, messages, avatar, read-receipt outbox, serta tombstones sinkronisasi
 - Preferences DataStore 1.2.1 untuk pengaturan
 - Coil 3 untuk poster dan thumbnail
 - AndroidX Media3 ExoPlayer untuk stream dan video offline
@@ -74,12 +74,18 @@ ganti URL remote dengan repository milik lu.
 - floating overlay player native dengan drag, pinch-to-resize, kembali ke layar player, seekbar + timestamp, skip ±10 detik, play/pause, mute, playback speed, episode sebelumnya/berikutnya, dan close
 - streaming online, membuka URL stream lewat aplikasi eksternal, dan playback file lokal
 - antrean download, notifikasi foreground, HTTP Range/resume via file `.part`, retry, hapus file, dan pemulihan antrean ketika boot/update aplikasi
-- pengaturan tema gelap, warna dinamis, optimasi baterai, pengelolaan aktivitas latar, dan izin floating overlay
+- pengaturan bahasa Indonesia/English (resource localization Android), tema gelap, warna dinamis, cache management, optimasi baterai, pengelolaan aktivitas latar, dan izin floating overlay
+- profil lokal tanpa login; favorites, history, dan downloads tetap bisa dibuka dari halaman profil
+- bottom navigation: beranda, jelajah, cari, pesan, dan profil; favorites/offline/history berada di halaman profil
+- autentikasi email/password dan Google Credential Manager dengan halaman login dan daftar terpisah; tidak ada automatic account linking
+- local-first favorites/history sync ke Realtime Database setelah login atau ketika koneksi tersedia
+- chat local-first: messages dan conversation disimpan di SQLite, outbox mengantrekan pesan dan read receipt offline, WorkManager mengirim ulang saat online
+- avatar diproses di perangkat (center crop 1:1, maksimal 512×512, JPEG maksimal 150 KB), disimpan sebagai Base64 di Realtime Database, dan memakai cache file lokal berdasarkan SHA-256
 
 ## kompatibilitas data
 
 - `applicationId` tetap `app.animego.inc`.
-- nama database tetap `animego.db`, versi 3; tabel `favorites`, `history`, dan `downloads` mengikuti struktur sumber lama.
+- nama database tetap `animego.db`; versi sekarang 7. tabel `favorites`, `history`, dan `downloads` dipertahankan, lalu tabel cache sosial/avatar/tombstone ditambahkan melalui SQLite migration.
 - path unduhan tetap menggunakan direktori app-specific dari `getExternalMediaDirs()` dan pola folder judul/anime-id/nama-file.
 - agar APK dapat meng-upgrade aplikasi yang sudah terpasang, sertifikat signing harus sama. artifact debug GitHub tidak otomatis bisa menggantikan APK release yang ditandatangani key berbeda. untuk memasang debug pertama kali, uninstall versi lama bila signature tidak cocok; uninstall akan menghapus data app-private, jadi backup dulu database/file penting.
 
@@ -124,11 +130,11 @@ The Android Firebase registration is included at `app/google-services.json` for 
 ### Android integration
 
 - Google Services Gradle plugin `4.5.0` and Firebase Android BoM `35.1.0` are configured.
-- Firebase Auth supports email/password, email verification, password reset, anonymous guest sessions, guest-to-email linking, and Google Credential Manager sign-in.
-- Realtime Database is used for public profiles, follows, friend requests, friendships, comments, likes, reports, conversations, messages, and push-token indexes.
-- Firebase Storage is used for profile avatars.
+- Firebase Auth supports email/password, email verification, password reset, and Google Credential Manager. Login and registration are separate flows; automatic provider linking and guest-to-account linking are disabled. Local guest favorites/history are merged into the account that is signed in when sync runs. Favorites/history rows are still device-local rather than per-account, so switching between multiple accounts on the same installation needs a separate account-scoping pass before production use.
+- Realtime Database stores private account data, public profile metadata, avatar Base64 payloads, follows, friend requests, friendships, comments, likes, reports, conversations, messages, and push-token indexes. Firebase Storage is not used by the Android project.
+- Avatar image payloads are separated under `avatars/{uid}`; `publicProfiles/{uid}` contains only avatar hash/timestamp metadata. The app downloads image bytes only when the local SHA-256 cache is missing or stale.
 - FCM handles chat notifications and deep-links into a conversation.
-- SQLite remains the local source for favorites/history/download metadata. The cloud sync merges favorites, uses `watchedAt` last-write-wins for history, and writes deletion tombstones so removed entries are not immediately resurrected by another device.
+- SQLite is the UI source of truth for local favorites/history and cached chat. The cloud sync merges favorites, uses `watchedAt` last-write-wins for history, and writes account-scoped deletion tombstones.
 
 ### Backend deployment
 
@@ -138,12 +144,12 @@ Install Firebase CLI, authenticate with the project owner account, then from the
 
 ```bash
 cd functions && npm install && npm run build && cd ..
-firebase deploy --only database,storage,functions
+firebase deploy --only database,functions
 ```
 
-Before deploying, enable Email/Password and Google providers under Firebase Authentication. For Google Sign-In, confirm the Web OAuth client ID exists in the Android app's `google-services.json` (the Google Services plugin generates `default_web_client_id`). Enable Realtime Database and provision the default Storage bucket.
+Before deploying, enable Email/Password and Google providers under Firebase Authentication. Keep the Firebase Auth setting that permits only one account per email address enabled so a single email cannot silently create separate provider accounts. For Google Sign-In, confirm the Web OAuth client ID exists in the Android app's `google-services.json` (the Google Services plugin generates `default_web_client_id`). Enable Realtime Database. Avatar data is public profile media and can be read by clients; only the matching authenticated UID can write its avatar.
 
-**Billing note:** Cloud Functions deployment requires the Blaze pay-as-you-go plan. The configured bucket name uses the newer `*.firebasestorage.app` format; Cloud Storage for Firebase requires Blaze as of February 3, 2026. Set a budget alert before linking billing. Realtime Database, Authentication's non-phone providers, and FCM have free quotas/usage, but overages and paid products can incur charges. See Firebase's official [pricing-plan documentation](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans) and [Storage billing FAQ](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024).
+**Billing note:** Firebase Cloud Functions deployment requires the Blaze pay-as-you-go plan. The app uses callable Functions for security-sensitive social operations, conversation setup, and read receipts, so those backend operations are not deployable on the Spark plan. Realtime Database, Authentication non-phone providers, and FCM have free quotas, but database storage/download and other usage can still exceed free quotas. Base64 increases image payload size by roughly one third; the 150 KB binary avatar cap therefore produces up to about 200 KB of Base64 per avatar. Review Firebase usage before publishing.
 
 ### Important verification status
 
@@ -151,4 +157,4 @@ This integration has not been deployed to the live Firebase project. The Securit
 
 ### Current implementation boundaries
 
-The first integrated pass includes the account/community entry points, comment screen, user search, follow/friend-request actions, friend list, one-to-one chat, `@anime` / `@anime/episode` sharing, avatar upload, FCM chat notifications, and SQLite/cloud merge. It is not yet a complete production social platform: older-page pagination for comments/messages, dedicated follower/following lists, moderation tooling, block-list management/unblock UI, message deletion/editing, and end-to-end App Check enforcement still need follow-up work. App Check is intentionally not enforced from the client because its provider and distribution policy must be configured for the actual release channel first.
+The current pass includes separate login/register screens, Google Credential Manager, account/community entry points, comment screen, user search, follow/friend-request actions, friend list, inbox tab, one-to-one local-first chat, `@anime` / `@anime/episode` sharing, Base64 avatar upload/cache, FCM chat notifications, bilingual UI resources, cache management, and SQLite/cloud merge. It is not yet a complete production social platform: older-page pagination for comments/messages, dedicated follower/following lists, moderation tooling, block-list management/unblock UI, message deletion/editing, and end-to-end App Check enforcement still need follow-up work. App Check is intentionally not enforced from the client because its provider and distribution policy must be configured for the actual release channel first.

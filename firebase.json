@@ -25,8 +25,5 @@
       "enabled": true,
       "port": 4000
     }
-  },
-  "storage": {
-    "rules": "storage.rules"
   }
 }

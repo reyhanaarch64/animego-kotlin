@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -17,12 +17,18 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import app.animego.inc.ui.AnimeGoApp
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private var requestedRoute by mutableStateOf("home")
     private var routeRequestId by mutableStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 26) {
+            val manager = getSystemService(android.app.NotificationManager::class.java)
+            manager.createNotificationChannel(android.app.NotificationChannel(
+                "animego_messages", getString(R.string.ui_003), android.app.NotificationManager.IMPORTANCE_HIGH
+            ))
+        }
         requestedRoute = routeFromIntent(intent)
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 3301)

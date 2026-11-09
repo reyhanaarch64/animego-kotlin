@@ -2,7 +2,8 @@ package app.animego.inc.core.firebase
 
 data class CloudUser(
     val uid: String = "", val username: String = "", val displayName: String = "",
-    val bio: String = "", val avatarUrl: String = "", val createdAt: Long = 0L,
+    val bio: String = "", val avatarHash: String = "", val avatarMimeType: String = "image/jpeg",
+    val avatarUpdatedAt: Long = 0L, val createdAt: Long = 0L,
     val followerCount: Long = 0L, val followingCount: Long = 0L
 )
 
@@ -16,7 +17,13 @@ data class ChatMessage(
     val id: String = "", val senderId: String = "", val type: String = "text",
     val text: String = "", val animeSlug: String = "", val animeTitle: String = "",
     val coverUrl: String = "", val episodeId: String = "", val episodeNumber: String = "",
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L, val deliveryState: String = "sent"
+)
+
+data class LocalConversation(
+    val id: String = "", val otherUid: String = "", val otherDisplayName: String = "",
+    val otherUsername: String = "", val lastMessage: String = "", val updatedAt: Long = 0L,
+    val unreadCount: Int = 0
 )
 
 data class FriendRequest(

@@ -42,6 +42,7 @@ import app.animego.inc.core.data.Anime
 import app.animego.inc.core.data.HistoryRecord
 import coil3.compose.AsyncImage
 import app.animego.inc.core.player.PlaybackSnapshot
+import app.animego.inc.ui.uiText
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Pause
 import com.composables.icons.lucide.Play
@@ -59,9 +60,9 @@ fun ScreenHeader(
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(uiText(title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             if (!subtitle.isNullOrBlank()) {
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(uiText(subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (action != null) action()
@@ -73,7 +74,7 @@ fun LoadingState(label: String = "memuat data...") {
     Box(Modifier.fillMaxWidth().padding(36.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             CircularProgressIndicator()
-            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiText(label), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -81,17 +82,17 @@ fun LoadingState(label: String = "memuat data...") {
 @Composable
 fun EmptyState(title: String, subtitle: String) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 30.dp, vertical = 42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(uiText(title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(uiText(subtitle), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
 fun SectionTitle(title: String, trailing: String? = null, onTrailing: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (!trailing.isNullOrBlank()) Text(trailing, Modifier.clickable { onTrailing?.invoke() }.padding(6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+        Text(uiText(title), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (!trailing.isNullOrBlank()) Text(uiText(trailing), Modifier.clickable { onTrailing?.invoke() }.padding(6.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -148,7 +149,7 @@ fun AnimeListCard(anime: Anime, onClick: () -> Unit, trailing: (@Composable () -
 @Composable
 fun HistoryStrip(items: List<HistoryRecord>, onResume: (HistoryRecord) -> Unit, onHistory: (() -> Unit)? = null) {
     if (items.isEmpty()) return
-    SectionTitle("lanjutkan menonton", "riwayat", onHistory)
+    SectionTitle(app.animego.inc.ui.uiText("lanjutkan menonton"), "riwayat", onHistory)
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp)) {
         items(items.take(10), key = { it.slug }) { item ->
             Column(Modifier.width(158.dp).clickable { onResume(item) }) {
@@ -219,18 +220,18 @@ fun PlaybackMiniPlayer(
                 }
                 Column(Modifier.weight(1f).clickable(onClick = onOpen)) {
                     Text(playback.title.ifBlank { "AnimeGo" }, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                    Text(playback.episode.ifBlank { if (playback.offline) "video offline" else "sedang diputar" }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                    Text(playback.episode.ifBlank { if (playback.offline) app.animego.inc.ui.uiText("video offline") else app.animego.inc.ui.uiText("sedang diputar") }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
                 IconButton(onClick = onSkipBack) {
-                    Icon(Lucide.SkipBack, contentDescription = "mundur 10 detik")
+                    Icon(Lucide.SkipBack, contentDescription = app.animego.inc.ui.uiText("mundur 10 detik"))
                 }
                 IconButton(onClick = onToggle) {
                     Icon(if (playback.isPlaying) Lucide.Pause else Lucide.Play, contentDescription = if (playback.isPlaying) "jeda" else "putar")
                 }
                 IconButton(onClick = onSkipForward) {
-                    Icon(Lucide.SkipForward, contentDescription = "maju 10 detik")
+                    Icon(Lucide.SkipForward, contentDescription = app.animego.inc.ui.uiText("maju 10 detik"))
                 }
-                IconButton(onClick = onClose) { Icon(Lucide.X, contentDescription = "tutup pemutar") }
+                IconButton(onClick = onClose) { Icon(Lucide.X, contentDescription = app.animego.inc.ui.uiText("tutup pemutar")) }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(formatClock(playback.positionMs / 1000.0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -247,13 +248,13 @@ fun PlaybackMiniPlayer(
                 Text(formatClock(playback.durationMs / 1000.0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onPreviousEpisode, enabled = canPreviousEpisode) { Text("episode −") }
-                TextButton(onClick = onNextEpisode, enabled = canNextEpisode) { Text("episode +") }
+                TextButton(onClick = onPreviousEpisode, enabled = canPreviousEpisode) { Text(app.animego.inc.ui.uiText("episode −")) }
+                TextButton(onClick = onNextEpisode, enabled = canNextEpisode) { Text(app.animego.inc.ui.uiText("episode +")) }
                 IconButton(onClick = onMuteToggle) {
                     Icon(if (playback.volume <= 0f) Lucide.VolumeX else Lucide.Volume2, contentDescription = if (playback.volume <= 0f) "aktifkan suara" else "mute")
                 }
                 TextButton(onClick = onSpeedCycle) { Text("${playback.speed}×") }
-                TextButton(onClick = onOpen) { Text("buka") }
+                TextButton(onClick = onOpen) { Text(app.animego.inc.ui.uiText("buka")) }
             }
         }
     }

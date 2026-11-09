@@ -45,6 +45,7 @@ class PlaybackService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var lastCloudSyncRequestAt = 0L
     private val progressTask = object : Runnable {
         override fun run() {
             saveProgress()
@@ -61,7 +62,7 @@ class PlaybackService : Service() {
     private val endedCleanup = Runnable {
         val player = runCatching { PlaybackEngine.player(this@PlaybackService) }.getOrNull() ?: return@Runnable
         if (player.playbackState == Player.STATE_ENDED) {
-            saveProgress()
+            saveProgress(syncCloud = true)
             stopService(Intent(this@PlaybackService, FloatingPlayerService::class.java))
             stopForegroundCompat()
             stopSelf()
@@ -71,7 +72,7 @@ class PlaybackService : Service() {
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             updateNotification()
-            if (!isPlaying) saveProgress()
+            if (!isPlaying) saveProgress(syncCloud = true)
             if (isPlaying) handler.removeCallbacks(endedCleanup)
         }
 
@@ -136,7 +137,7 @@ class PlaybackService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(progressTask)
         handler.removeCallbacks(endedCleanup)
-        saveProgress()
+        saveProgress(syncCloud = true)
         runCatching { PlaybackEngine.player(this).removeListener(listener) }
         runCatching { stopForegroundCompat() }
         super.onDestroy()
@@ -153,7 +154,7 @@ class PlaybackService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun saveProgress() {
+    private fun saveProgress(syncCloud: Boolean = false) {
         val slug = PlaybackEngine.currentSlug
         val source = PlaybackEngine.currentSource
         if (slug.isBlank() || source.isBlank() || PlaybackEngine.currentOffline) return
@@ -164,7 +165,15 @@ class PlaybackService : Service() {
         val position = player.currentPosition.coerceAtLeast(0L).toDouble() / 1000.0
         val duration = player.duration.takeIf { it > 0L }?.toDouble()?.div(1000.0) ?: 0.0
         val database = AppGraph.from(applicationContext).database
-        ioScope.launch { runCatching { database.updateProgress(slug, title, episode, cover, source, position, duration) } }
+        ioScope.launch {
+            runCatching { database.updateProgress(slug, title, episode, cover, source, position, duration) }
+            val graph = AppGraph.from(applicationContext)
+            val now = System.currentTimeMillis()
+            if (graph.auth.isSignedIn && (syncCloud || now - lastCloudSyncRequestAt >= 180_000L)) {
+                lastCloudSyncRequestAt = now
+                app.animego.inc.core.firebase.CloudSyncScheduler.syncSoon(applicationContext)
+            }
+        }
     }
 
     private fun createChannel() {

@@ -17,6 +17,9 @@ class AnimeGoApplication : Application(), Configuration.Provider {
             ))
         }
         app.animego.inc.core.firebase.CloudSyncScheduler.schedulePeriodic(this)
-        if (AppGraph.from(this).auth.isSignedIn) app.animego.inc.core.firebase.CloudSyncScheduler.syncSoon(this)
+        if (AppGraph.from(this).auth.isSignedIn) {
+            app.animego.inc.core.firebase.CloudSyncScheduler.syncSoon(this)
+            app.animego.inc.core.firebase.ChatSyncScheduler.schedule(this)
+        }
     }
 }

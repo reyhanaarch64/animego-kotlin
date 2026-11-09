@@ -1,4 +1,5 @@
 package app.animego.inc.ui.screens
+import app.animego.inc.ui.uiText
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,12 +33,12 @@ fun FavoritesScreen(graph: AppGraph, onOpenAnime: (String) -> Unit) {
         favorites = graph.database.getFavorites().map { Anime(slug = it.slug, title = it.title, cover = it.cover) }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("favorit", "anime yang lu simpan")
-        if (favorites.isEmpty()) EmptyState("belum ada favorit", "buka detail anime lalu tekan tombol hati untuk menyimpannya")
+        ScreenHeader(app.animego.inc.ui.uiText("favorit"), "anime yang lu simpan")
+        if (favorites.isEmpty()) EmptyState(app.animego.inc.ui.uiText("belum ada favorit"), "buka detail anime lalu tekan tombol hati untuk menyimpannya")
         else LazyColumn {
             items(favorites, key = { it.slug }) { anime ->
                 AnimeListCard(anime, onClick = { onOpenAnime(anime.slug) }, trailing = {
-                    TextButton(onClick = { scope.launch { graph.sync.removeFavorite(anime.slug); reload++ } }) { Text("hapus") }
+                    TextButton(onClick = { scope.launch { graph.sync.removeFavorite(anime.slug); reload++ } }) { Text(app.animego.inc.ui.uiText("hapus")) }
                 })
             }
         }
@@ -52,10 +53,10 @@ fun HistoryScreen(graph: AppGraph, onResume: (HistoryRecord) -> Unit) {
     var confirmClear by remember { mutableStateOf(false) }
     LaunchedEffect(reload) { history = graph.database.getHistory() }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("riwayat", "lanjutkan dari posisi terakhir", action = {
-            if (history.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("bersihkan") }
+        ScreenHeader(app.animego.inc.ui.uiText("riwayat"), "lanjutkan dari posisi terakhir", action = {
+            if (history.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text(app.animego.inc.ui.uiText("bersihkan")) }
         })
-        if (history.isEmpty()) EmptyState("riwayat masih kosong", "anime yang lu tonton akan muncul di sini")
+        if (history.isEmpty()) EmptyState(app.animego.inc.ui.uiText("riwayat masih kosong"), app.animego.inc.ui.uiText("anime yang lu tonton akan muncul di sini"))
         else LazyColumn {
             items(history, key = { it.slug }) { row ->
                 val progress = if (row.duration > 0) (row.position / row.duration * 100).toInt().coerceIn(0, 100) else 0
@@ -65,17 +66,17 @@ fun HistoryScreen(graph: AppGraph, onResume: (HistoryRecord) -> Unit) {
                             Text(row.title, fontWeight = FontWeight.SemiBold)
                             Text("${row.ep} · ${formatClock(row.position)} / ${formatClock(row.duration)} · $progress%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        TextButton(onClick = { scope.launch { graph.sync.removeHistory(row.slug); reload++ } }) { Text("hapus") }
+                        TextButton(onClick = { scope.launch { graph.sync.removeHistory(row.slug); reload++ } }) { Text(app.animego.inc.ui.uiText("hapus")) }
                     }
                 }
             }
         }
     }
     if (confirmClear) AlertDialog(
-        onDismissRequest = { confirmClear = false }, title = { Text("bersihkan riwayat?") },
-        text = { Text("semua data progres menonton akan dihapus.") },
-        confirmButton = { TextButton(onClick = { scope.launch { graph.sync.clearHistory(); reload++; confirmClear = false } }) { Text("bersihkan") } },
-        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("batal") } }
+        onDismissRequest = { confirmClear = false }, title = { Text(app.animego.inc.ui.uiText("bersihkan riwayat?")) },
+        text = { Text(app.animego.inc.ui.uiText("semua data progres menonton akan dihapus.")) },
+        confirmButton = { TextButton(onClick = { scope.launch { graph.sync.clearHistory(); reload++; confirmClear = false } }) { Text(app.animego.inc.ui.uiText("bersihkan")) } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(app.animego.inc.ui.uiText("batal")) } }
     )
 }
 
@@ -92,8 +93,8 @@ fun DownloadsScreen(graph: AppGraph, onPlayOffline: (DownloadRecord) -> Unit) {
         }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("unduhan", "video offline dan antrean download")
-        if (downloads.isEmpty()) EmptyState("belum ada unduhan", "tambahkan episode dari halaman detail anime")
+        ScreenHeader(app.animego.inc.ui.uiText("unduhan"), app.animego.inc.ui.uiText("video offline dan antrean download"))
+        if (downloads.isEmpty()) EmptyState(app.animego.inc.ui.uiText("belum ada unduhan"), app.animego.inc.ui.uiText("tambahkan episode dari halaman detail anime"))
         else LazyColumn {
             items(downloads, key = { it.id }) { row ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -111,13 +112,13 @@ fun DownloadsScreen(graph: AppGraph, onPlayOffline: (DownloadRecord) -> Unit) {
                         if (row.error.isNotBlank()) Text(row.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             when (row.status) {
-                                "completed" -> Button(onClick = { if (File(row.path).isFile) onPlayOffline(row) else refresh++ }, enabled = File(row.path).isFile) { Text("putar offline") }
-                                "downloading", "queued" -> OutlinedButton(onClick = {}, enabled = false) { Text(if (row.status == "downloading") "sedang diunduh" else "dalam antrean") }
+                                "completed" -> Button(onClick = { if (File(row.path).isFile) onPlayOffline(row) else refresh++ }, enabled = File(row.path).isFile) { Text(app.animego.inc.ui.uiText("putar offline")) }
+                                "downloading", "queued" -> OutlinedButton(onClick = {}, enabled = false) { Text(app.animego.inc.ui.uiText(if (row.status == "downloading") "sedang diunduh" else "dalam antrean")) }
                                 else -> OutlinedButton(onClick = { graph.database.retryDownload(row.id); DownloadScheduler.enqueue(context, row.id); refresh++ }) {
-                                    Text("coba lagi")
+                                    Text(app.animego.inc.ui.uiText("coba lagi"))
                                 }
                             }
-                            TextButton(onClick = { confirmDelete = row }) { Text("hapus") }
+                            TextButton(onClick = { confirmDelete = row }) { Text(app.animego.inc.ui.uiText("hapus")) }
                         }
                     }
                 }
@@ -125,16 +126,16 @@ fun DownloadsScreen(graph: AppGraph, onPlayOffline: (DownloadRecord) -> Unit) {
         }
     }
     confirmDelete?.let { row -> AlertDialog(
-        onDismissRequest = { confirmDelete = null }, title = { Text("hapus unduhan?") },
-        text = { Text("file video dan catatan unduhan untuk ${row.title} · ${row.ep} akan dihapus.") },
+        onDismissRequest = { confirmDelete = null }, title = { Text(app.animego.inc.ui.uiText("hapus unduhan?")) },
+        text = { Text(app.animego.inc.ui.uiTextFormat("file video dan catatan unduhan", row.title, row.ep)) },
         confirmButton = { TextButton(onClick = {
             WorkManager.getInstance(context).cancelAllWorkByTag("animego_download_${row.id}")
             DownloadStorage.delete(row.path)
             graph.database.removeDownload(row.id)
             confirmDelete = null
             refresh++
-        }) { Text("hapus") } },
-        dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("batal") } }
+        }) { Text(app.animego.inc.ui.uiText("hapus")) } },
+        dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(app.animego.inc.ui.uiText("batal")) } }
     ) }
 }
 

@@ -1,4 +1,5 @@
 package app.animego.inc.ui.screens
+import app.animego.inc.ui.uiText
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -76,23 +77,23 @@ fun HomeScreen(
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("ANIMEGO", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-                Text("jelajahi cerita berikutnya", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(app.animego.inc.ui.uiText("ANIMEGO"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                Text(app.animego.inc.ui.uiText("jelajahi cerita berikutnya"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onOpenSettings) { Icon(Lucide.Settings, contentDescription = "pengaturan") }
+            IconButton(onClick = onOpenSettings) { Icon(Lucide.Settings, contentDescription = app.animego.inc.ui.uiText("pengaturan")) }
         }
-        if (loading) LoadingState("mengambil katalog AnimeGo...")
+        if (loading) LoadingState(app.animego.inc.ui.uiText("mengambil katalog AnimeGo..."))
         if (error.isNotBlank()) {
             Card(modifier = Modifier.fillMaxWidth().padding(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("gagal memuat data", fontWeight = FontWeight.Bold)
-                    Text(error, style = MaterialTheme.typography.bodySmall)
+                    Text(app.animego.inc.ui.uiText("gagal memuat data"), fontWeight = FontWeight.Bold)
+                    Text(uiText(error), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         val data = home
         if (data != null && data.ongoing.items.isEmpty() && data.top.items.isEmpty() && data.movies.items.isEmpty() && data.completed.items.isEmpty()) {
-            androidx.compose.material3.Text("katalog belum tersedia", Modifier.padding(horizontal = 20.dp, vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            androidx.compose.material3.Text(app.animego.inc.ui.uiText("katalog belum tersedia"), Modifier.padding(horizontal = 20.dp, vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (data != null) {
             val featured = data.top.items.firstOrNull() ?: data.ongoing.items.firstOrNull()
@@ -118,12 +119,12 @@ private fun HeroCard(anime: Anime, onOpenAnime: (String) -> Unit) {
             if (anime.cover.isNotBlank()) AsyncImage(anime.cover, contentDescription = anime.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF00B0B12)))))
             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-                Text("rekomendasi anime", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Text(app.animego.inc.ui.uiText("rekomendasi anime"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Text(anime.title, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2)
                 Text(listOf(anime.type, anime.year, anime.score.takeIf { it.isNotBlank() }?.let { "★ $it" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "), color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
                 Button(onClick = { onOpenAnime(anime.slug) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Text("lihat detail")
+                    Text(app.animego.inc.ui.uiText("lihat detail"))
                 }
             }
         }

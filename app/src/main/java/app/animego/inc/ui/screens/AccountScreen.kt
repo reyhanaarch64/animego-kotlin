@@ -1,53 +1,62 @@
 package app.animego.inc.ui.screens
 
-import androidx.compose.foundation.layout.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.animego.inc.AppGraph
+import app.animego.inc.ui.components.UserAvatar
+import app.animego.inc.ui.uiText
 import kotlinx.coroutines.launch
 
 @Composable
 fun AccountScreen(graph: AppGraph, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var displayName by remember { mutableStateOf("") }
+    val uid = graph.auth.currentUser?.uid.orEmpty()
+    var displayName by remember { mutableStateOf(graph.auth.currentUser?.displayName.orEmpty()) }
     var username by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
-    var avatarUrl by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var register by remember { mutableStateOf(false) }
-    var signedUid by remember { mutableStateOf(graph.auth.currentUser?.uid) }
-    var anonymous by remember { mutableStateOf(graph.auth.currentUser?.isAnonymous == true) }
+    var avatarRefresh by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(signedUid) {
-        if (signedUid != null && anonymous.not()) {
-            runCatching { graph.social.getUser(signedUid!!)?.let { username = it.username; displayName = it.displayName; bio = it.bio; avatarUrl = it.avatarUrl } }
+    LaunchedEffect(uid) {
+        if (uid.isNotBlank() && graph.auth.isSignedIn) {
+            runCatching { graph.social.getUser(uid) }.onSuccess { user ->
+                if (user != null) { username = user.username; displayName = user.displayName; bio = user.bio }
+            }
         }
-    }
-
-    DisposableEffect(graph) {
-        val listener = com.google.firebase.auth.FirebaseAuth.AuthStateListener { auth ->
-            signedUid = auth.currentUser?.uid
-            anonymous = auth.currentUser?.isAnonymous == true
-        }
-        graph.firebase.auth.addAuthStateListener(listener)
-        onDispose { graph.firebase.auth.removeAuthStateListener(listener) }
     }
 
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
             busy = true
-            runCatching { graph.social.uploadAvatar(uri) }.onSuccess { avatarUrl = it; message = "foto profil diperbarui" }
+            message = ""
+            runCatching { graph.avatar.uploadAvatar(uri) }
+                .onSuccess { avatarRefresh++; message = "foto profil diperbarui" }
                 .onFailure { message = it.message ?: "gagal upload avatar" }
             busy = false
         }
@@ -57,52 +66,42 @@ fun AccountScreen(graph: AppGraph, onBack: () -> Unit) {
         scope.launch {
             busy = true
             message = ""
-            try { block(); if (graph.auth.isSignedIn) graph.sync.syncNow(); message = "berhasil" }
-            catch (e: Exception) { message = e.message ?: "operasi gagal" }
-            finally { busy = false }
+            try {
+                block()
+                message = "profil berhasil diperbarui"
+            } catch (e: Exception) {
+                message = e.message ?: "operasi gagal"
+            } finally { busy = false }
         }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("akun animego", style = MaterialTheme.typography.headlineSmall)
-            TextButton(onClick = onBack) { Text("kembali") }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(uiText("akun animego"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text(uiText("kembali")) }
         }
-        if (signedUid != null && !anonymous) {
-            Text("akun terhubung", style = MaterialTheme.typography.titleMedium)
-            Text("uid: $signedUid", style = MaterialTheme.typography.bodySmall)
-            if (avatarUrl.isNotBlank()) AsyncImage(model = avatarUrl, contentDescription = "avatar", modifier = Modifier.size(88.dp))
-            OutlinedButton(onClick = { avatarPicker.launch("image/*") }, enabled = !busy) { Text("ubah foto profil") }
-            OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text("username") }, singleLine = true)
-            OutlinedTextField(displayName, { displayName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("nama tampilan") }, singleLine = true)
-            OutlinedTextField(bio, { bio = it }, modifier = Modifier.fillMaxWidth(), label = { Text("bio") }, maxLines = 3)
-            Button(onClick = { run { graph.social.updateProfile(username, displayName, bio) } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("simpan profil") }
-            OutlinedButton(onClick = { run { graph.auth.signInWithGoogle() } }, enabled = !busy) { Text("tautkan / masuk dengan google") }
-            if (graph.auth.currentUser?.isEmailVerified == false) {
-                Text("email belum diverifikasi")
-                OutlinedButton(onClick = { run { graph.auth.resendVerification() } }, enabled = !busy) { Text("kirim ulang verifikasi") }
-            }
-            OutlinedButton(onClick = { run { graph.auth.logout() } }, enabled = !busy) { Text("keluar") }
-        } else {
-            if (anonymous) Text("lu sedang menggunakan mode guest. akun bisa ditautkan agar UID dan data cloud guest tetap sama.")
-            Text(if (register) "buat akun" else "masuk", style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("email") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            if (register || anonymous) OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("nama tampilan") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            Button(onClick = {
-                run {
-                    if (anonymous) graph.auth.linkGuestWithEmail(email, password, displayName)
-                    else if (register) graph.auth.register(email, password, displayName)
-                    else graph.auth.login(email, password)
-                }
-            }, enabled = !busy && email.isNotBlank() && password.length >= 6, modifier = Modifier.fillMaxWidth()) {
-                Text(if (busy) "memproses..." else if (anonymous) "tautkan akun guest" else if (register) "daftar" else "masuk")
-            }
-            TextButton(onClick = { register = !register }) { Text(if (register) "sudah punya akun? masuk" else "belum punya akun? daftar") }
-            TextButton(onClick = { run { graph.auth.sendPasswordReset(email) } }, enabled = !busy && email.isNotBlank()) { Text("lupa password") }
-            OutlinedButton(onClick = { run { graph.auth.signInWithGoogle() } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("lanjut dengan google") }
-            if (signedUid == null) OutlinedButton(onClick = { run { graph.auth.continueAsGuest() } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("lanjut sebagai guest") }
+        if (!graph.auth.isSignedIn) {
+            Text(uiText("login diperlukan"), color = MaterialTheme.colorScheme.error)
+            return@Column
         }
-        if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            UserAvatar(graph, uid, displayName, 78.dp, avatarRefresh)
+            Column(Modifier.weight(1f)) {
+                Text(displayName, style = MaterialTheme.typography.titleMedium)
+                Text("@$username", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { avatarPicker.launch("image/*") }, enabled = !busy) { Text(uiText("ubah foto profil")) }
+            }
+        }
+        Text(uiText("foto otomatis dipotong 1:1 dari tengah, di-resize maksimal 512×512, lalu dikompres maksimal 150 KB sebelum disimpan ke database."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text(uiText("username")) }, singleLine = true)
+        OutlinedTextField(displayName, { displayName = it }, modifier = Modifier.fillMaxWidth(), label = { Text(uiText("nama tampilan")) }, singleLine = true)
+        OutlinedTextField(bio, { bio = it }, modifier = Modifier.fillMaxWidth(), label = { Text(uiText("bio")) }, maxLines = 3)
+        Button(onClick = { run { graph.social.updateProfile(username, displayName, bio) } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(uiText("simpan profil")) }
+        if (graph.auth.currentUser?.isEmailVerified == false) {
+            Text(uiText("email belum diverifikasi"))
+            OutlinedButton(onClick = { run { graph.auth.resendVerification() } }, enabled = !busy) { Text(uiText("kirim ulang verifikasi")) }
+        }
+        OutlinedButton(onClick = { run { graph.auth.logout(); onBack() } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(uiText("keluar")) }
+        if (message.isNotBlank()) Text(uiText(message), color = MaterialTheme.colorScheme.primary)
     }
 }

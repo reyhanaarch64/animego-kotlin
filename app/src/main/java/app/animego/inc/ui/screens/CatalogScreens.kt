@@ -1,4 +1,5 @@
 package app.animego.inc.ui.screens
+import app.animego.inc.ui.uiText
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -64,20 +65,20 @@ fun BrowseScreen(graph: AppGraph, onOpenAnime: (String) -> Unit, onOpenGenres: (
         finally { loading = false }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("jelajah", "pilih kategori untuk menyaring katalog")
+        ScreenHeader(app.animego.inc.ui.uiText("jelajah"), "pilih kategori untuk menyaring katalog")
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             browseFilters.forEach { (value, label) ->
                 FilterChip(selected = kind == value, onClick = { kind = value; page = 1 }, label = { Text(label) })
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onOpenGenres, modifier = Modifier.weight(1f)) { Text("genre") }
-            Button(onClick = onOpenSchedule, modifier = Modifier.weight(1f)) { Text("jadwal rilis") }
+            Button(onClick = onOpenGenres, modifier = Modifier.weight(1f)) { Text(app.animego.inc.ui.uiText("genre")) }
+            Button(onClick = onOpenSchedule, modifier = Modifier.weight(1f)) { Text(app.animego.inc.ui.uiText("jadwal rilis")) }
         }
         when {
-            loading -> LoadingState("memuat katalog...")
-            error.isNotBlank() -> EmptyState("gagal memuat katalog", error)
-            data?.items.isNullOrEmpty() -> EmptyState("belum ada anime", "coba kategori lain atau muat ulang nanti")
+            loading -> LoadingState(app.animego.inc.ui.uiText("memuat katalog..."))
+            error.isNotBlank() -> EmptyState(app.animego.inc.ui.uiText("gagal memuat katalog"), error)
+            data?.items.isNullOrEmpty() -> EmptyState(app.animego.inc.ui.uiText("belum ada anime"), "coba kategori lain atau muat ulang nanti")
             else -> {
                 LazyColumn(Modifier.weight(1f)) {
                     items(data!!.items, key = { it.slug }) { AnimeListCard(it, onClick = { onOpenAnime(it.slug) }) }
@@ -124,16 +125,16 @@ fun SearchScreen(graph: AppGraph, onOpenAnime: (String) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("cari anime", "judul, seri, atau kata kunci")
+        ScreenHeader(app.animego.inc.ui.uiText("cari anime"), "judul, seri, atau kata kunci")
         OutlinedTextField(
             value = query, onValueChange = { query = it; results = null; page = 1 }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            placeholder = { Text("contoh: naruto, one piece...") }, singleLine = true,
+            placeholder = { Text(app.animego.inc.ui.uiText("contoh: naruto, one piece...")) }, singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { scope.launch { searchNow() } })
         )
-        Button(onClick = { scope.launch { searchNow() } }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) { Text("cari") }
+        Button(onClick = { scope.launch { searchNow() } }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) { Text(app.animego.inc.ui.uiText("cari")) }
         if (suggestions.isNotEmpty()) {
-            Text("saran pencarian", Modifier.padding(start = 18.dp, top = 8.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+            Text(app.animego.inc.ui.uiText("saran pencarian"), Modifier.padding(start = 18.dp, top = 8.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
             suggestions.forEach { anime ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp), onClick = { onOpenAnime(anime.slug) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Text(anime.title, Modifier.padding(14.dp), fontWeight = FontWeight.Medium)
@@ -141,9 +142,9 @@ fun SearchScreen(graph: AppGraph, onOpenAnime: (String) -> Unit) {
             }
         }
         when {
-            loading -> LoadingState("mencari...")
-            error.isNotBlank() -> EmptyState("pencarian gagal", error)
-            results != null && results!!.items.isEmpty() -> EmptyState("tidak ditemukan", "coba kata kunci yang berbeda")
+            loading -> LoadingState(app.animego.inc.ui.uiText("mencari..."))
+            error.isNotBlank() -> EmptyState(app.animego.inc.ui.uiText("pencarian gagal"), error)
+            results != null && results!!.items.isEmpty() -> EmptyState(app.animego.inc.ui.uiText("tidak ditemukan"), "coba kata kunci yang berbeda")
             results != null -> LazyColumn(Modifier.weight(1f)) {
                 items(results!!.items, key = { it.slug }) { AnimeListCard(it, onClick = { onOpenAnime(it.slug) }) }
                 item {
@@ -169,19 +170,19 @@ fun GenreListScreen(graph: AppGraph, onOpenGenre: (String) -> Unit, onBack: () -
         finally { loading = false }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("genre anime", "temukan anime berdasarkan genre", action = { TextButton(onClick = onBack) { Text("kembali") } })
+        ScreenHeader(app.animego.inc.ui.uiText("genre anime"), "temukan anime berdasarkan genre", action = { TextButton(onClick = onBack) { Text(app.animego.inc.ui.uiText("kembali")) } })
         when {
             loading -> LoadingState()
-            error.isNotBlank() -> EmptyState("gagal memuat genre", error)
+            error.isNotBlank() -> EmptyState(app.animego.inc.ui.uiText("gagal memuat genre"), error)
             else -> LazyColumn {
                 items(genres, key = { it.id }) { genre ->
                     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), onClick = { onOpenGenre(genre.slug) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
                                 Text(genre.name, fontWeight = FontWeight.SemiBold)
-                                Text("${genre.count} anime", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(app.animego.inc.ui.uiTextFormat("jumlah anime", genre.count), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Text("›", color = MaterialTheme.colorScheme.primary)
+                            Text(app.animego.inc.ui.uiText("›"), color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -202,11 +203,11 @@ fun GenreScreen(graph: AppGraph, slug: String, onOpenAnime: (String) -> Unit, on
         finally { loading = false }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(data?.first?.name ?: "genre", "katalog berdasarkan genre", action = { TextButton(onClick = onBack) { Text("kembali") } })
+        ScreenHeader(data?.first?.name ?: "genre", "katalog berdasarkan genre", action = { TextButton(onClick = onBack) { Text(app.animego.inc.ui.uiText("kembali")) } })
         when {
             loading -> LoadingState()
-            error.isNotBlank() -> EmptyState("gagal memuat genre", error)
-            data?.second?.items.isNullOrEmpty() -> EmptyState("belum ada anime", "genre ini belum memiliki hasil")
+            error.isNotBlank() -> EmptyState(app.animego.inc.ui.uiText("gagal memuat genre"), error)
+            data?.second?.items.isNullOrEmpty() -> EmptyState(app.animego.inc.ui.uiText("belum ada anime"), "genre ini belum memiliki hasil")
             else -> LazyColumn {
                 items(data!!.second.items, key = { it.slug }) { AnimeListCard(it, onClick = { onOpenAnime(it.slug) }) }
                 item { PageControls(page, data!!.second.totalPages, { page = (page - 1).coerceAtLeast(1) }, { page++ }) }
@@ -236,14 +237,14 @@ fun ScheduleScreen(graph: AppGraph, onOpenAnime: (String) -> Unit, onBack: () ->
         finally { loading = false }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("jadwal rilis", "pilih hari penayangan", action = { TextButton(onClick = onBack) { Text("kembali") } })
+        ScreenHeader(app.animego.inc.ui.uiText("jadwal rilis"), "pilih hari penayangan", action = { TextButton(onClick = onBack) { Text(app.animego.inc.ui.uiText("kembali")) } })
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             days.forEach { value -> FilterChip(selected = day == value, onClick = { day = value; page = 1 }, label = { Text(value) }) }
         }
         when {
-            loading -> LoadingState("memuat jadwal...")
-            error.isNotBlank() -> EmptyState("jadwal tidak tersedia", error)
-            items.isEmpty() -> EmptyState("belum ada jadwal", "belum ada data anime untuk hari ini")
+            loading -> LoadingState(app.animego.inc.ui.uiText("memuat jadwal..."))
+            error.isNotBlank() -> EmptyState(app.animego.inc.ui.uiText("jadwal tidak tersedia"), error)
+            items.isEmpty() -> EmptyState(app.animego.inc.ui.uiText("belum ada jadwal"), "belum ada data anime untuk hari ini")
             else -> LazyColumn {
                 items(items, key = { it.slug }) { AnimeListCard(it, onClick = { onOpenAnime(it.slug) }) }
                 item { PageControls(page, totalPages, { page = (page - 1).coerceAtLeast(1) }, { page++ }) }
@@ -255,8 +256,8 @@ fun ScheduleScreen(graph: AppGraph, onOpenAnime: (String) -> Unit, onBack: () ->
 @Composable
 private fun PageControls(page: Int, totalPages: Int, previous: () -> Unit, next: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = previous, enabled = page > 1) { Text("sebelumnya") }
+        TextButton(onClick = previous, enabled = page > 1) { Text(app.animego.inc.ui.uiText("sebelumnya")) }
         Text("$page / ${totalPages.coerceAtLeast(1)}", style = MaterialTheme.typography.labelLarge)
-        TextButton(onClick = next, enabled = totalPages > 0 && page < totalPages) { Text("berikutnya") }
+        TextButton(onClick = next, enabled = totalPages > 0 && page < totalPages) { Text(app.animego.inc.ui.uiText("berikutnya")) }
     }
 }
