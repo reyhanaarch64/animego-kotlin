@@ -153,7 +153,16 @@ cd functions && npm install && npm run build && cd ..
 firebase deploy --only database,functions
 ```
 
-Before deploying, enable Email/Password and Google providers under Firebase Authentication. Keep the Firebase Auth setting that permits only one account per email address enabled so a single email cannot silently create separate provider accounts. For Google Sign-In, confirm the Web OAuth client ID exists in the Android app's `google-services.json` (the Google Services plugin generates `default_web_client_id`). Enable Realtime Database. Avatar data is public profile media and can be read by clients; only the matching authenticated UID can write its avatar.
+Before deploying, enable Email/Password and Google providers under Firebase Authentication. Keep the Firebase Auth setting that permits only one account per email address enabled so a single email cannot silently create separate provider accounts. For Google Credential Manager, confirm the Web OAuth client ID exists in `app/google-services.json` (the Google Services plugin generates `default_web_client_id`) and register the signing certificate fingerprints in Firebase Console: Project settings → Your apps → Android app (`app.animego.inc`) → SHA certificate fingerprints. Add SHA-1 and SHA-256 for the exact certificate used by the installed APK (GitHub Actions debug keystore for debug builds; release keystore for release builds). Then download the refreshed `google-services.json`, replace `app/google-services.json`, and rebuild. Error `28444 / Developer console is not set up correctly` is an OAuth/Firebase Console configuration error; it cannot be fixed by Kotlin code alone. Also verify Google is enabled under Authentication → Sign-in method.
+
+For email registration, deploy the repository's Realtime Database rules to the same `animego2` project before testing profile creation:
+
+```bash
+firebase use animego2
+firebase deploy --only database
+```
+
+A `PERMISSION_DENIED` from the profile write means the live Realtime Database rules do not authorize the paths written by the client (or the rules deployed in Console differ from this repository). The account may already have been created successfully in Firebase Authentication before the profile write is attempted. The app now keeps that valid Auth session and logs the profile-write failure instead of presenting it as if account creation itself failed; profile initialization can be retried at next login. Avatar data is public profile media and can be read by clients; only the matching authenticated UID can write its avatar.
 
 **Billing note:** Firebase Cloud Functions deployment requires the Blaze pay-as-you-go plan. The app uses callable Functions for security-sensitive social operations, conversation setup, and read receipts, so those backend operations are not deployable on the Spark plan. Realtime Database, Authentication non-phone providers, and FCM have free quotas, but database storage/download and other usage can still exceed free quotas. Base64 increases image payload size by roughly one third; the 150 KB binary avatar cap therefore produces up to about 200 KB of Base64 per avatar. Review Firebase usage before publishing.
 

@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1641185226-4mq03nrves2f549g06o0iclcn4kpp2oh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.animego.inc",
+            "certificate_hash": "2898476efdddc61a36e75f6580fe361c33581fee"
+          }
+        },
+        {
           "client_id": "1641185226-teirgpv3bqd5qgt1rbl2gt6t7bed7ae2.apps.googleusercontent.com",
           "client_type": 3
         }

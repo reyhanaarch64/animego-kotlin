@@ -42,7 +42,15 @@ class AuthRepository(private val context: Context, private val firebase: Firebas
         val user = result.user ?: error("firebase tidak mengembalikan akun")
         user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName.trim()).build()).await()
         user.sendEmailVerification().await()
-        createOrUpdateProfile(user.uid, displayName.trim(), "user_${user.uid.take(8)}")
+        // Authentication is already committed by Firebase Auth at this point.
+        // A temporary/misconfigured RTDB rule must not turn a successful account
+        // creation into a misleading registration failure (which would orphan the
+        // newly-created account from the user's perspective).
+        runCatching {
+            createOrUpdateProfile(user.uid, displayName.trim(), "user_${user.uid.take(8)}")
+        }.onFailure { error ->
+            android.util.Log.e("AnimeGoAuth", "Account created, but initial RTDB profile write failed", error)
+        }
         syncPushToken()
         schedulePostLoginSync()
     }
@@ -118,7 +126,10 @@ class AuthRepository(private val context: Context, private val firebase: Firebas
             firebase.auth.signOut()
             error("akun sudah terdaftar. silakan login menggunakan metode yang sebelumnya digunakan.")
         }
-        ensureUserProfile(user)
+        runCatching { ensureUserProfile(user) }
+            .onFailure { error ->
+                android.util.Log.e("AnimeGoAuth", "Google auth succeeded, but RTDB profile sync failed", error)
+            }
         syncPushToken()
         schedulePostLoginSync()
     }

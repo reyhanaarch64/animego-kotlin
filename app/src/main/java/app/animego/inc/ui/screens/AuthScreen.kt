@@ -57,7 +57,7 @@ fun AuthScreen(graph: AppGraph, registration: Boolean, onBack: () -> Unit, onSwi
                 onSuccess()
             } catch (e: Exception) {
                 error = true
-                message = e.message?.substringAfterLast(':')?.trim()?.ifBlank { "autentikasi gagal." } ?: "autentikasi gagal."
+                message = authErrorMessage(e)
             } finally {
                 busy = false
             }
@@ -147,7 +147,7 @@ fun GoogleAuthLaunchScreen(graph: AppGraph, registration: Boolean, onSuccess: ()
             }.onSuccess {
                 onSuccess()
             }.onFailure {
-                message = it.message?.substringAfterLast(':')?.trim()?.ifBlank { "autentikasi google gagal." } ?: "autentikasi google gagal."
+                message = authErrorMessage(it, google = true)
             }
             busy = false
         }
@@ -164,4 +164,21 @@ private tailrec fun android.content.Context.findActivity(): Activity? = when (th
     is Activity -> this
     is android.content.ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+/** Converts common Firebase/Google setup failures into actionable user-facing messages. */
+private fun authErrorMessage(error: Throwable, google: Boolean = false): String {
+    val raw = generateSequence(error) { it.cause }
+        .mapNotNull { it.message }
+        .joinToString(" | ")
+    val normalized = raw.lowercase()
+    return when {
+        normalized.contains("28444") || normalized.contains("developer console is not set up correctly") ||
+            normalized.contains("developer_error") ->
+            "login google belum dikonfigurasi dengan benar. pemilik project perlu menambahkan SHA-1/SHA-256 sertifikat aplikasi ke Firebase, mengaktifkan Google provider, lalu mengunduh ulang google-services.json."
+        normalized.contains("permission_denied") || normalized.contains("permission denied") ->
+            "akun autentikasi berhasil dibuat, tetapi Firebase Realtime Database menolak penyimpanan profil. deploy database/database.rules.json ke project animego2 melalui Firebase CLI."
+        google -> raw.substringAfterLast(':').trim().ifBlank { "autentikasi google gagal. periksa konfigurasi OAuth Firebase." }
+        else -> raw.substringAfterLast(':').trim().ifBlank { "autentikasi gagal." }
+    }
 }
