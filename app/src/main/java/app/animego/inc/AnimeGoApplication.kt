@@ -2,6 +2,7 @@ package app.animego.inc
 
 import android.app.Application
 import androidx.work.Configuration
+import androidx.work.WorkManager
 
 class AnimeGoApplication : Application(), Configuration.Provider {
     override val workManagerConfiguration: Configuration
@@ -9,7 +10,10 @@ class AnimeGoApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        AppGraph.from(this)
+        // The manifest removes WorkManagerInitializer so custom configuration must be
+        // installed explicitly before any scheduler calls WorkManager.getInstance().
+        WorkManager.initialize(this, workManagerConfiguration)
+        val graph = AppGraph.from(this)
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             val manager = getSystemService(android.app.NotificationManager::class.java)
             manager.createNotificationChannel(android.app.NotificationChannel(
@@ -17,7 +21,7 @@ class AnimeGoApplication : Application(), Configuration.Provider {
             ))
         }
         app.animego.inc.core.firebase.CloudSyncScheduler.schedulePeriodic(this)
-        if (AppGraph.from(this).auth.isSignedIn) {
+        if (graph.auth.isSignedIn) {
             app.animego.inc.core.firebase.CloudSyncScheduler.syncSoon(this)
             app.animego.inc.core.firebase.ChatSyncScheduler.schedule(this)
         }

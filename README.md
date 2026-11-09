@@ -109,6 +109,12 @@ aplikasi sumber memiliki fallback fetch melalui WebView apabila server mengembal
 - mini-player dan popup menyediakan seekbar, timestamp, skip ±10 detik, play/pause, mute, kecepatan, serta navigasi episode.
 - notifikasi playback menampilkan progress playback dan menyediakan aksi episode sebelumnya/berikutnya, mundur/maju 10 detik, play/pause, dan tutup.
 
+## perbaikan startup crash (9 november 2026)
+
+- `AnimeGoApplication` sekarang menginisialisasi WorkManager secara eksplisit sebelum scheduler dipanggil, karena metadata `WorkManagerInitializer` memang dihapus dari AndroidX Startup.
+- `AppTheme` sekarang mewarisi `Theme.AppCompat.DayNight.NoActionBar`, sesuai kebutuhan `MainActivity` yang menggunakan `AppCompatActivity`.
+- analisis temuan dan batas validasi runtime: `docs/STARTUP-CRASH-ANALYSIS.md`.
+
 ## catatan pengujian
 
 source dan struktur proyek diperiksa secara statis. environment penyusunan ZIP ini tidak menyediakan Android SDK/Gradle distribution dan tidak dapat mengakses dependency repository, jadi APK tidak dapat dikompilasi atau diuji pada perangkat di sini. validasi kompilasi akhir tetap perlu dijalankan melalui GitHub Actions dan pengujian runtime di perangkat Android.
