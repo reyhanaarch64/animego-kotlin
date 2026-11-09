@@ -245,6 +245,8 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val downloadFailedText = uiText("gagal mengunduh")
+    val overlayDeniedText = uiText("izin floating player belum diberikan")
+    val downloadQueuedText = uiText("episode masuk antrean unduhan")
     val activity = remember(context) { context.findActivity() }
     val overlayPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -252,7 +254,7 @@ fun PlayerScreen(
         if (Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)) {
             FloatingPlayerService.start(context)
         } else {
-            Toast.makeText(context, uiText("izin floating player belum diberikan"), Toast.LENGTH_LONG).show()
+            Toast.makeText(context, overlayDeniedText, Toast.LENGTH_LONG).show()
         }
     }
     val player = remember { PlaybackEngine.player(context) }
@@ -623,7 +625,7 @@ fun PlayerScreen(
                                             runCatching {
                                                 val downloadId = DownloadStorage.queue(context, graph.database, item, ep, graph.api.cookieHeader(ep.url))
                                                 DownloadScheduler.enqueue(context, downloadId)
-                                                Toast.makeText(context, uiText("episode masuk antrean unduhan"), Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, downloadQueuedText, Toast.LENGTH_SHORT).show()
                                             }.onFailure { Toast.makeText(context, it.message ?: downloadFailedText, Toast.LENGTH_SHORT).show() }
                                         }
                                     }, enabled = animeForDownload != null) { Icon(Lucide.Download, contentDescription = app.animego.inc.ui.uiText("unduh episode"), tint = Color.White) }

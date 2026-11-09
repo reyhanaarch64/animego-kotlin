@@ -213,8 +213,6 @@ fun uiText(value: String): String = when (value) {
     "video tersimpan" -> stringResource(R.string.ui_204)
     "berbagi anime" -> stringResource(R.string.ui_205)
     "berbagi episode" -> stringResource(R.string.ui_206)
-    "berbagi episode ${msg.episodeNumber}" -> stringResource(R.string.ui_207)
-    "berbagi anime ${msg.animeTitle}" -> stringResource(R.string.ui_208)
     "pengikut" -> stringResource(R.string.ui_209)
     "mengikuti" -> stringResource(R.string.ui_210)
     "dari" -> stringResource(R.string.ui_211)

@@ -31,7 +31,7 @@
     <string name="ui_027">continue with email</string>
     <string name="ui_028">sign up with google</string>
     <string name="ui_029">sign up with email</string>
-    <string name="ui_030">don't have an account? sign up</string>
+    <string name="ui_030">don\'t have an account? sign up</string>
     <string name="ui_031">already have an account? sign in</string>
     <string name="ui_032">forgot password?</string>
     <string name="ui_033">search users</string>
@@ -189,7 +189,7 @@
     <string name="ui_185">sending</string>
     <string name="ui_186">sent</string>
     <string name="ui_187">failed</string>
-    <string name="ui_188">don't have an account?</string>
+    <string name="ui_188">don\'t have an account?</string>
     <string name="ui_189">already have an account?</string>
     <string name="ui_190">library</string>
     <string name="ui_191">manage account</string>
