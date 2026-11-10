@@ -28,16 +28,22 @@ class SocialRepository(
         require(displayName.trim().length in 2..32)
         val id = uid()
         val old = root.child("publicProfiles").child(id).child("username").get().await().getValue(String::class.java).orEmpty()
+        val oldReservation = if (old.isNotBlank() && old != clean) {
+            root.child("usernames").child(old).get().await().getValue(String::class.java)
+        } else null
         val taken = root.child("usernames").child(clean).get().await()
-        require(!taken.exists() || taken.getValue(String::class.java) == id) { "username sudah dipakai" }
-        val updates = mutableMapOf<String, Any>(
-            "publicProfiles/$id/username" to clean, "publicProfiles/$id/displayName" to displayName.trim(),
+        require(!taken.exists() || taken.getValue(String::class.java).isNullOrBlank() || taken.getValue(String::class.java) == id) { "username sudah dipakai" }
+        val updates = mutableMapOf<String, Any?>(
+            "publicProfiles/$id/uid" to id, "publicProfiles/$id/username" to clean, "publicProfiles/$id/displayName" to displayName.trim(),
             "publicProfiles/$id/bio" to bio.take(160), "publicProfiles/$id/updatedAt" to ServerValue.TIMESTAMP,
-            "users/$id/username" to clean, "users/$id/displayName" to displayName.trim(),
+            "users/$id/uid" to id, "users/$id/username" to clean, "users/$id/displayName" to displayName.trim(),
             "users/$id/bio" to bio.take(160), "users/$id/updatedAt" to ServerValue.TIMESTAMP,
             "usernames/$clean" to id
         )
-        if (old.isNotBlank() && old != clean) updates["usernames/$old"] = ""
+        // Release only a reservation that is still owned by this UID. Older builds
+        // wrote an empty string instead of deleting the node; do not try to delete
+        // that legacy node because the hardened rules correctly reject that write.
+        if (old.isNotBlank() && old != clean && oldReservation == id) updates["usernames/$old"] = null
         root.updateChildren(updates).await()
     }
 
@@ -219,7 +225,7 @@ class SocialRepository(
                             "id" to message.id, "senderId" to message.senderId, "type" to message.type,
                             "text" to message.text, "animeSlug" to message.animeSlug, "animeTitle" to message.animeTitle,
                             "coverUrl" to message.coverUrl, "episodeId" to message.episodeId,
-                            "episodeNumber" to message.episodeNumber, "createdAt" to message.createdAt
+                            "episodeNumber" to message.episodeNumber, "createdAt" to ServerValue.TIMESTAMP
                         )).await()
                     }
                     local.setMessageState(user.uid, message.id, "sent")

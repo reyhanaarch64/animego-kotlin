@@ -155,6 +155,7 @@ class AuthRepository(private val context: Context, private val firebase: Firebas
             "publicProfiles/$uid/displayName" to displayName,
             "publicProfiles/$uid/username" to username,
             "publicProfiles/$uid/createdAt" to com.google.firebase.database.ServerValue.TIMESTAMP,
+            "publicProfiles/$uid/avatarFallback" to (firebase.auth.currentUser?.email?.take(1)?.uppercase() ?: displayName.take(1).uppercase()),
             "usernames/$username" to uid
         )
         firebase.database.reference.updateChildren(updates).await()
@@ -179,6 +180,8 @@ class AuthRepository(private val context: Context, private val firebase: Firebas
             "publicProfiles/${user.uid}/username" to username,
             "publicProfiles/${user.uid}/displayName" to displayName,
             "publicProfiles/${user.uid}/updatedAt" to now,
+            "publicProfiles/${user.uid}/googlePhotoUrl" to (user.photoUrl?.toString().orEmpty()),
+            "publicProfiles/${user.uid}/avatarFallback" to (user.email?.take(1)?.uppercase() ?: displayName.take(1).uppercase()),
             "usernames/$username" to user.uid
         )
         if (!privateSnapshot.child("createdAt").exists()) updates["users/${user.uid}/createdAt"] = now

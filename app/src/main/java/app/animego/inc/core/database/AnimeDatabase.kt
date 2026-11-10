@@ -13,15 +13,11 @@ import app.animego.inc.core.firebase.LocalConversation
 import org.json.JSONObject
 import java.io.File
 
-/**
- * Kotlin rewrite of the old DatabaseHelper. The DB filename, version and SQL schema remain
- * byte-for-byte compatible in shape with the shipped SQLite database so existing local data
- * and downloaded-file paths are retained.
- */
+/** Local-first database. Favorites and history are partitioned by authenticated owner UID. */
 class AnimeDatabase(context: Context) : SQLiteOpenHelper(context.applicationContext, NAME, null, VERSION) {
     companion object {
         const val NAME = "animego.db"
-        const val VERSION = 7
+        const val VERSION = 8
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -31,9 +27,9 @@ class AnimeDatabase(context: Context) : SQLiteOpenHelper(context.applicationCont
     }
 
     private fun createBase(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS favorites (slug TEXT PRIMARY KEY, title TEXT NOT NULL, cover TEXT, added_at INTEGER NOT NULL)")
-        db.execSQL("CREATE TABLE IF NOT EXISTS history (slug TEXT PRIMARY KEY, title TEXT NOT NULL, ep TEXT, cover TEXT, src TEXT, position REAL DEFAULT 0, duration REAL DEFAULT 0, watched_at INTEGER NOT NULL)")
-        db.execSQL("CREATE INDEX IF NOT EXISTS history_watched_at ON history(watched_at DESC)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS favorites (owner_uid TEXT NOT NULL DEFAULT 'local', slug TEXT NOT NULL, title TEXT NOT NULL, cover TEXT, added_at INTEGER NOT NULL, PRIMARY KEY(owner_uid,slug))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS history (owner_uid TEXT NOT NULL DEFAULT 'local', slug TEXT NOT NULL, title TEXT NOT NULL, ep TEXT, cover TEXT, src TEXT, position REAL DEFAULT 0, duration REAL DEFAULT 0, watched_at INTEGER NOT NULL, PRIMARY KEY(owner_uid,slug))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS history_watched_at ON history(owner_uid,watched_at DESC)")
     }
 
     private fun createDownloads(db: SQLiteDatabase) {
@@ -67,6 +63,21 @@ class AnimeDatabase(context: Context) : SQLiteOpenHelper(context.applicationCont
         if (oldVersion < 7 && !hasColumn(db, "conversations", "read_sync_pending")) {
             db.execSQL("ALTER TABLE conversations ADD COLUMN read_sync_pending INTEGER NOT NULL DEFAULT 0")
         }
+        if (oldVersion < 8) {
+            db.beginTransaction()
+            try {
+                db.execSQL("ALTER TABLE favorites RENAME TO favorites_v7")
+                db.execSQL("ALTER TABLE history RENAME TO history_v7")
+                db.execSQL("CREATE TABLE favorites (owner_uid TEXT NOT NULL DEFAULT 'local', slug TEXT NOT NULL, title TEXT NOT NULL, cover TEXT, added_at INTEGER NOT NULL, PRIMARY KEY(owner_uid,slug))")
+                db.execSQL("CREATE TABLE history (owner_uid TEXT NOT NULL DEFAULT 'local', slug TEXT NOT NULL, title TEXT NOT NULL, ep TEXT, cover TEXT, src TEXT, position REAL DEFAULT 0, duration REAL DEFAULT 0, watched_at INTEGER NOT NULL, PRIMARY KEY(owner_uid,slug))")
+                db.execSQL("INSERT INTO favorites(owner_uid,slug,title,cover,added_at) SELECT 'legacy',slug,title,cover,added_at FROM favorites_v7")
+                db.execSQL("INSERT INTO history(owner_uid,slug,title,ep,cover,src,position,duration,watched_at) SELECT 'legacy',slug,title,ep,cover,src,position,duration,watched_at FROM history_v7")
+                db.execSQL("DROP TABLE favorites_v7")
+                db.execSQL("DROP TABLE history_v7")
+                db.execSQL("CREATE INDEX IF NOT EXISTS history_watched_at ON history(owner_uid,watched_at DESC)")
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
     }
 
     private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean =
@@ -89,19 +100,15 @@ class AnimeDatabase(context: Context) : SQLiteOpenHelper(context.applicationCont
         db.execSQL("CREATE TABLE IF NOT EXISTS history_clear_state (id INTEGER PRIMARY KEY CHECK(id=1), cleared_at INTEGER NOT NULL)")
     }
 
-    @Synchronized fun saveFavorite(slug: String, title: String, cover: String) {
-        if (slug.isBlank()) return
-        val values = ContentValues().apply {
-            put("slug", slug); put("title", title); put("cover", cover); put("added_at", System.currentTimeMillis())
-        }
+    @Synchronized fun saveFavorite(slug: String, title: String, cover: String, ownerUid: String = "local") {
+        if (slug.isBlank() || ownerUid.isBlank()) return
+        val values = ContentValues().apply { put("owner_uid", ownerUid); put("slug", slug); put("title", title); put("cover", cover); put("added_at", System.currentTimeMillis()) }
         writableDatabase.insertWithOnConflict("favorites", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    @Synchronized fun saveFavoriteAt(slug: String, title: String, cover: String, addedAt: Long) {
-        if (slug.isBlank()) return
-        val values = ContentValues().apply {
-            put("slug", slug); put("title", title); put("cover", cover); put("added_at", addedAt)
-        }
+    @Synchronized fun saveFavoriteAt(slug: String, title: String, cover: String, addedAt: Long, ownerUid: String = "local") {
+        if (slug.isBlank() || ownerUid.isBlank()) return
+        val values = ContentValues().apply { put("owner_uid", ownerUid); put("slug", slug); put("title", title); put("cover", cover); put("added_at", addedAt) }
         writableDatabase.insertWithOnConflict("favorites", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
@@ -115,45 +122,37 @@ class AnimeDatabase(context: Context) : SQLiteOpenHelper(context.applicationCont
         "favorite_tombstones", null, "owner_uid=?", arrayOf(ownerUid), null, null, null
     ).use { cursor -> buildMap { while (cursor.moveToNext()) put(cursor.getString(cursor.getColumnIndexOrThrow("slug")), cursor.getLong(cursor.getColumnIndexOrThrow("deleted_at"))) } }
 
-    @Synchronized fun removeFavorite(slug: String) {
-        writableDatabase.delete("favorites", "slug=?", arrayOf(slug))
-    }
+    @Synchronized fun removeFavorite(slug: String, ownerUid: String = "local") { writableDatabase.delete("favorites", "owner_uid=? AND slug=?", arrayOf(ownerUid, slug)) }
 
-    @Synchronized fun isFavorite(slug: String): Boolean = readableDatabase.query(
-        "favorites", arrayOf("slug"), "slug=?", arrayOf(slug), null, null, null, "1"
+    @Synchronized fun isFavorite(slug: String, ownerUid: String = "local"): Boolean = readableDatabase.query(
+        "favorites", arrayOf("slug"), "owner_uid=? AND slug=?", arrayOf(ownerUid, slug), null, null, null, "1"
     ).use { it.moveToFirst() }
 
-    @Synchronized fun getFavorites(): List<FavoriteRecord> = readableDatabase.query(
-        "favorites", null, null, null, null, null, "added_at DESC"
+    @Synchronized fun getFavorites(ownerUid: String = "local"): List<FavoriteRecord> = readableDatabase.query(
+        "favorites", null, "owner_uid=?", arrayOf(ownerUid), null, null, "added_at DESC"
     ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toFavorite()) } }
 
-    @Synchronized fun saveHistory(slug: String, title: String, ep: String, cover: String, source: String, position: Double, duration: Double) {
-        if (slug.isBlank()) return
-        val values = historyValues(title, ep, cover, source, position, duration)
-        values.put("slug", slug)
-        values.put("watched_at", System.currentTimeMillis())
+    @Synchronized fun saveHistory(slug: String, title: String, ep: String, cover: String, source: String, position: Double, duration: Double, ownerUid: String = "local") {
+        if (slug.isBlank() || ownerUid.isBlank()) return
+        val values = historyValues(title, ep, cover, source, position, duration).apply { put("owner_uid", ownerUid); put("slug", slug); put("watched_at", System.currentTimeMillis()) }
         writableDatabase.insertWithOnConflict("history", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    @Synchronized fun saveHistoryAt(slug: String, title: String, ep: String, cover: String, source: String, position: Double, duration: Double, watchedAt: Long) {
-        if (slug.isBlank()) return
-        val values = historyValues(title, ep, cover, source, position, duration)
-        values.put("slug", slug)
-        values.put("watched_at", watchedAt)
+    @Synchronized fun saveHistoryAt(slug: String, title: String, ep: String, cover: String, source: String, position: Double, duration: Double, watchedAt: Long, ownerUid: String = "local") {
+        if (slug.isBlank() || ownerUid.isBlank()) return
+        val values = historyValues(title, ep, cover, source, position, duration).apply { put("owner_uid", ownerUid); put("slug", slug); put("watched_at", watchedAt) }
         writableDatabase.insertWithOnConflict("history", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    @Synchronized fun updateProgress(slug: String, title: String, ep: String, cover: String, source: String, position: Double, duration: Double) {
-        if (slug.isBlank()) return
-        val values = historyValues(title, ep, cover, source, position, duration)
-        values.put("watched_at", System.currentTimeMillis())
-        val count = writableDatabase.update("history", values, "slug=?", arrayOf(slug))
-        if (count == 0) saveHistory(slug, title, ep, cover, source, position, duration)
+    @Synchronized fun updateProgress(slug: String, title: String, ep: String, cover: String, source: String, position: Double, duration: Double, ownerUid: String = "local") {
+        if (slug.isBlank() || ownerUid.isBlank()) return
+        val values = historyValues(title, ep, cover, source, position, duration).apply { put("watched_at", System.currentTimeMillis()) }
+        val count = writableDatabase.update("history", values, "owner_uid=? AND slug=?", arrayOf(ownerUid, slug))
+        if (count == 0) saveHistory(slug, title, ep, cover, source, position, duration, ownerUid)
     }
 
     private fun historyValues(title: String, ep: String, cover: String, source: String, position: Double, duration: Double) = ContentValues().apply {
-        put("title", title); put("ep", ep); put("cover", cover); put("src", source)
-        put("position", position); put("duration", duration)
+        put("title", title); put("ep", ep); put("cover", cover); put("src", source); put("position", position); put("duration", duration)
     }
 
     @Synchronized fun markHistoryRemoved(ownerUid: String, slug: String, deletedAt: Long = System.currentTimeMillis()) {
@@ -175,14 +174,14 @@ class AnimeDatabase(context: Context) : SQLiteOpenHelper(context.applicationCont
         "history_clear_state", arrayOf("cleared_at"), "owner_uid=?", arrayOf(ownerUid), null, null, null, "1"
     ).use { if (it.moveToFirst()) it.getLong(0) else 0L }
 
-    @Synchronized fun removeHistory(slug: String) { writableDatabase.delete("history", "slug=?", arrayOf(slug)) }
-    @Synchronized fun clearHistory(ownerUid: String = "") {
-        writableDatabase.delete("history", null, null)
-        if (ownerUid.isNotBlank()) markHistoryCleared(ownerUid, System.currentTimeMillis())
+    @Synchronized fun removeHistory(slug: String, ownerUid: String = "local") { writableDatabase.delete("history", "owner_uid=? AND slug=?", arrayOf(ownerUid, slug)) }
+    @Synchronized fun clearHistory(ownerUid: String = "local") {
+        writableDatabase.delete("history", "owner_uid=?", arrayOf(ownerUid))
+        if (ownerUid.isNotBlank() && ownerUid != "local") markHistoryCleared(ownerUid, System.currentTimeMillis())
     }
 
-    @Synchronized fun getHistory(): List<HistoryRecord> = readableDatabase.query(
-        "history", null, null, null, null, null, "watched_at DESC", "40"
+    @Synchronized fun getHistory(ownerUid: String = "local"): List<HistoryRecord> = readableDatabase.query(
+        "history", null, "owner_uid=?", arrayOf(ownerUid), null, null, "watched_at DESC", "40"
     ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.toHistory()) } }
 
     @Synchronized fun addDownload(

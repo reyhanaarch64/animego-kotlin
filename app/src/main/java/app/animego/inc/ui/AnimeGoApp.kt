@@ -41,7 +41,6 @@ import app.animego.inc.ui.screens.SettingsScreen
 import app.animego.inc.ui.screens.AccountScreen
 import app.animego.inc.ui.screens.SocialHubScreen
 import app.animego.inc.ui.screens.ChatScreen
-import app.animego.inc.ui.screens.CommentsScreen
 import app.animego.inc.ui.screens.ProfileScreen
 import app.animego.inc.ui.screens.AuthScreen
 import app.animego.inc.ui.screens.MessagesScreen
@@ -61,12 +60,19 @@ private data class BottomDestination(val route: String, val label: String, val i
 fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: Long = 0L) {
     val dark by graph.settings.darkTheme.collectAsState(initial = true)
     val dynamic by graph.settings.dynamicColor.collectAsState(initial = false)
-    val language by graph.settings.languageTag.collectAsState(initial = "system")
+    val language by graph.settings.languageTag.collectAsState(initial = "loading")
     val navController = rememberNavController()
     val context = LocalContext.current
     val playback by PlaybackEngine.snapshot.collectAsState()
     LaunchedEffect(language) {
-        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(if (language == "system") "" else language))
+        // Do not apply the temporary default locale before DataStore has emitted the
+        // user's saved preference. Applying "system" first and then "id"/"en" can
+        // recreate the Activity twice during cold start and looks like a UI flicker.
+        if (language == "loading") return@LaunchedEffect
+        val target = LocaleListCompat.forLanguageTags(if (language == "system") "" else language)
+        if (AppCompatDelegate.getApplicationLocales().toLanguageTags() != target.toLanguageTags()) {
+            AppCompatDelegate.setApplicationLocales(target)
+        }
     }
     LaunchedEffect(playback.source) {
         if (playback.source.isNotBlank()) {
@@ -237,7 +243,7 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
                         onBack = { navController.popBackStack() },
                         onPlay = { slug, index -> navController.navigate(playerRoute(slug = slug, index = index)) },
                         onOpenGenre = { genre -> navController.navigate("genre/${Uri.encode(genre)}") },
-                        onOpenComments = { animeSlug -> navController.navigate("comments/${Uri.encode(animeSlug)}") })
+                        onLogin = { navController.navigate("login") })
                 }
                 composable(
                     route = "player?slug={slug}&index={index}&source={source}&title={title}&episode={episode}&cover={cover}&position={position}&offline={offline}",
@@ -269,10 +275,6 @@ fun AnimeGoApp(graph: AppGraph, initialRoute: String = "home", routeRequestId: L
                 }
                 composable("settings") {
                     SettingsScreen(graph, onBack = { navController.popBackStack() })
-                }
-                composable("comments/{animeSlug}", arguments = listOf(navArgument("animeSlug") { type = NavType.StringType })) { entry ->
-                    CommentsScreen(graph, entry.arguments?.getString("animeSlug").orEmpty(),
-                        onBack = { navController.popBackStack() }, onLogin = { navController.navigate("login") })
                 }
                 composable("account") {
                     AccountScreen(graph, onBack = { navController.popBackStack() })

@@ -5,19 +5,61 @@
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && auth.uid == $uid",
-        ".validate": "newData.hasChildren(['uid']) && newData.child('uid').val() == $uid",
         "uid": {
+          ".write": "auth != null && auth.uid == $uid",
           ".validate": "newData.val() == auth.uid"
         },
         "createdAt": {
-          ".validate": "!data.exists() || newData.val() == data.val()"
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() == data.val())"
         },
-        "followerCount": {
-          ".validate": "newData.val() == (data.val() == null ? 0 : data.val())"
+        "favorites": {
+          "$slug": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || (newData.hasChildren(['slug','title','addedAt']) && newData.child('slug').val() == $slug && newData.child('title').isString() && newData.child('addedAt').isNumber())"
+          }
         },
-        "followingCount": {
-          ".validate": "newData.val() == (data.val() == null ? 0 : data.val())"
+        "history": {
+          "$slug": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || (newData.hasChildren(['slug','title','watchedAt']) && newData.child('slug').val() == $slug && newData.child('title').isString() && newData.child('watchedAt').isNumber())"
+          }
+        },
+        "favoriteTombstones": {
+          "$slug": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || newData.isNumber()"
+          }
+        },
+        "historyTombstones": {
+          "$slug": {
+            ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+            ".validate": "!newData.exists() || newData.isNumber()"
+          }
+        },
+        "historyClearedAt": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || newData.isNumber()"
+        },
+        "lastSyncAt": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || newData.isNumber()"
+        },
+        "displayName": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 32"
+        },
+        "username": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9_]{3,20}$/)"
+        },
+        "bio": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isString() && newData.val().length <= 160"
+        },
+        "updatedAt": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "newData.isNumber() && newData.val() <= now"
         }
       },
       ".indexOn": [
@@ -27,14 +69,14 @@
     "usernames": {
       "$username": {
         ".read": true,
-        ".write": "auth != null && ((!data.exists() && newData.val() == auth.uid) || (data.val() == auth.uid && (newData.val() == '' || newData.val() == auth.uid)))"
+        ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && $username.matches(/^[a-z0-9_]{3,20}$/) && ((!data.exists() && newData.val() == auth.uid) || (data.val() == '' && newData.val() == auth.uid) || (data.val() == auth.uid && (newData.val() == auth.uid || !newData.exists())))"
       }
     },
     "follows": {
       "$uid": {
         "$targetUid": {
-          ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && auth.uid == $uid && $uid != $targetUid && !root.child('blocks').child($uid).child($targetUid).exists() && !root.child('blocks').child($targetUid).child($uid).exists()",
-          ".validate": "newData.hasChild('createdAt')"
+          ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && auth.uid == $uid && $uid != $targetUid && (!newData.exists() || (!root.child('blocks').child($uid).child($targetUid).exists() && !root.child('blocks').child($targetUid).child($uid).exists()))",
+          ".validate": "newData.hasChild('createdAt') && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now"
         },
         ".read": "auth != null && auth.uid == $uid"
       }
@@ -42,8 +84,8 @@
     "friendRequests": {
       "$requestId": {
         ".read": "auth != null && (data.child('fromUid').val() == auth.uid || data.child('toUid').val() == auth.uid)",
-        ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && !data.exists() && newData.child('fromUid').val() == auth.uid && newData.child('toUid').isString() && newData.child('toUid').val() != auth.uid && newData.child('status').val() == 'pending' && !root.child('blocks').child(auth.uid).child(newData.child('toUid').val()).exists() && !root.child('blocks').child(newData.child('toUid').val()).child(auth.uid).exists()",
-        ".validate": "newData.hasChildren(['id','fromUid','toUid','status','createdAt']) && newData.child('id').val() == $requestId && newData.child('fromUid').val() == auth.uid && newData.child('status').val() == 'pending' && newData.child('createdAt').val() <= now"
+        ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && !data.exists() && newData.child('fromUid').val() == auth.uid && newData.child('toUid').isString() && newData.child('toUid').val().length > 0 && newData.child('toUid').val() != auth.uid && newData.child('status').val() == 'pending' && !root.child('blocks').child(auth.uid).child(newData.child('toUid').val()).exists() && !root.child('blocks').child(newData.child('toUid').val()).child(auth.uid).exists()",
+        ".validate": "newData.hasChildren(['id','fromUid','toUid','status','createdAt']) && newData.child('id').val() == $requestId && newData.child('fromUid').val() == auth.uid && newData.child('toUid').isString() && newData.child('toUid').val().length > 0 && newData.child('status').val() == 'pending' && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now"
       }
     },
     "friendships": {
@@ -65,7 +107,7 @@
         ".read": true,
         "$commentId": {
           ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && !data.exists() && newData.child('authorId').val() == auth.uid && newData.child('animeSlug').val() == $animeSlug && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 2000",
-          ".validate": "newData.hasChildren(['id','authorId','text','createdAt','parentId']) && newData.child('id').val() == $commentId && newData.child('authorId').val() == auth.uid && newData.child('createdAt').val() <= now"
+          ".validate": "newData.hasChildren(['id','authorId','text','createdAt','parentId']) && newData.child('id').val() == $commentId && newData.child('authorId').val() == auth.uid && newData.child('authorName').isString() && newData.child('authorName').val().length <= 32 && newData.child('authorAvatar').isString() && newData.child('authorAvatar').val().length <= 64 && newData.child('animeSlug').val() == $animeSlug && newData.child('parentId').isString() && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now && newData.child('likeCount').val() == 0"
         },
         ".indexOn": [
           "createdAt"
@@ -76,9 +118,9 @@
       "$animeSlug": {
         "$commentId": {
           "$uid": {
-            ".read": true,
             ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && auth.uid == $uid && ((newData.val() == true && root.child('comments').child($animeSlug).child($commentId).exists()) || !newData.exists())"
-          }
+          },
+          ".read": true
         }
       }
     },
@@ -96,7 +138,7 @@
           ".read": "auth != null && root.child('conversations').child($conversationId).child('members').child(auth.uid).exists() && root.child('friendships').child(auth.uid).child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).exists() && root.child('friendships').child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).child(auth.uid).exists() && !root.child('blocks').child(auth.uid).child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).exists() && !root.child('blocks').child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).child(auth.uid).exists()",
           "$messageId": {
             ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && root.child('conversations').child($conversationId).child('members').child(auth.uid).exists() && newData.child('senderId').val() == auth.uid && !root.child('blocks').child(auth.uid).child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).exists() && !root.child('blocks').child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).child(auth.uid).exists() && root.child('friendships').child(auth.uid).child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).exists() && root.child('friendships').child(root.child('conversations').child($conversationId).child('members').child(auth.uid).child('peerUid').val()).child(auth.uid).exists() && !data.exists()",
-            ".validate": "newData.hasChildren(['id','senderId','type','createdAt']) && newData.child('senderId').val() == auth.uid && (newData.child('type').val() == 'text' || newData.child('type').val() == 'anime' || newData.child('type').val() == 'episode' || newData.child('type').val() == 'mixed') && newData.child('createdAt').val() <= now && (newData.child('type').val() != 'text' || (newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 4000))"
+            ".validate": "newData.hasChildren(['id','senderId','type','createdAt']) && newData.child('senderId').val() == auth.uid && (newData.child('type').val() == 'text' || newData.child('type').val() == 'anime' || newData.child('type').val() == 'episode' || newData.child('type').val() == 'mixed') && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now && (newData.child('type').val() != 'text' || (newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 4000))"
           },
           ".indexOn": [
             "createdAt"
@@ -114,14 +156,15 @@
       "$reportId": {
         ".write": "auth != null && auth.token.firebase.sign_in_provider != 'anonymous' && !data.exists() && newData.child('reporterId').val() == auth.uid && newData.child('reason').isString() && newData.child('reason').val().length >= 5",
         ".read": false,
-        ".validate": "newData.hasChildren(['id','reporterId','targetType','targetId','reason','createdAt','status']) && newData.child('id').val() == $reportId && newData.child('reporterId').val() == auth.uid && (newData.child('targetType').val() == 'user' || newData.child('targetType').val() == 'comment' || newData.child('targetType').val() == 'message') && newData.child('createdAt').val() <= now"
+        ".validate": "newData.hasChildren(['id','reporterId','targetType','targetId','reason','createdAt','status']) && newData.child('id').val() == $reportId && newData.child('reporterId').val() == auth.uid && (newData.child('targetType').val() == 'user' || newData.child('targetType').val() == 'comment' || newData.child('targetType').val() == 'message') && newData.child('targetId').isString() && newData.child('targetId').val().length > 0 && newData.child('reason').isString() && newData.child('reason').val().length >= 5 && newData.child('reason').val().length <= 500 && newData.child('status').val() == 'open' && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now"
       }
     },
     "userTokens": {
       "$uid": {
         ".read": "auth != null && auth.uid == $uid",
         "$token": {
-          ".write": "auth != null && auth.uid == $uid"
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "!newData.exists() || newData.val() == true"
         }
       }
     },
@@ -155,11 +198,11 @@
         },
         "createdAt": {
           ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
-          ".validate": "!data.exists() || newData.val() == data.val()"
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() == data.val())"
         },
         "updatedAt": {
           ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
-          ".validate": "newData.val() <= now"
+          ".validate": "newData.isNumber() && newData.val() <= now"
         },
         "avatarHash": {
           ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
@@ -167,13 +210,21 @@
         },
         "avatarUpdatedAt": {
           ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
-          ".validate": "!newData.exists() || newData.val() <= now"
+          ".validate": "!newData.exists() || (newData.isNumber() && newData.val() <= now)"
         },
         "followerCount": {
           ".write": false
         },
         "followingCount": {
           ".write": false
+        },
+        "googlePhotoUrl": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || (newData.isString() && (newData.val() == '' || newData.val().matches(/^https?:\\/\\/.+/)))"
+        },
+        "avatarFallback": {
+          ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
+          ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2)"
         }
       }
     },
@@ -182,12 +233,12 @@
       "$uid": {
         "data": {
           ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
-          ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 204800)"
+          ".validate": "!newData.exists() || (newData.isString() && newData.val().length > 0 && newData.val().length <= 204800 && newData.val().matches(/^[A-Za-z0-9+\\/]+={0,2}$/))"
         },
         "meta": {
           "hash": {
             ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length == 64)"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/))"
           },
           "mimeType": {
             ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
@@ -195,7 +246,7 @@
           },
           "updatedAt": {
             ".write": "auth != null && auth.uid == $uid && auth.token.firebase.sign_in_provider != 'anonymous'",
-            ".validate": "!newData.exists() || newData.val() <= now"
+            ".validate": "!newData.exists() || (newData.isNumber() && newData.val() <= now)"
           }
         }
       }

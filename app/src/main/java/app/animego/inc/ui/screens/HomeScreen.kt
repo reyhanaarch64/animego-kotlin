@@ -44,7 +44,6 @@ import app.animego.inc.core.data.AnimeHome
 import app.animego.inc.core.data.HistoryRecord
 import app.animego.inc.ui.components.AnimeRail
 import app.animego.inc.ui.components.HistoryStrip
-import app.animego.inc.ui.components.LoadingState
 import coil3.compose.AsyncImage
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Settings
@@ -58,16 +57,16 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onResumeHistory: (HistoryRecord) -> Unit
 ) {
-    var home by remember { mutableStateOf<AnimeHome?>(null) }
+    var home by remember { mutableStateOf(graph.api.getCachedHome()) }
     var history by remember { mutableStateOf<List<HistoryRecord>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(home == null) }
     var error by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        loading = true
+        loading = home == null
         try {
-            history = graph.database.getHistory()
-            home = graph.api.getHome()
+            history = graph.database.getHistory(graph.auth.currentUser?.uid ?: "local")
+            home = graph.api.getHome(forceRefresh = home != null)
             error = ""
         } catch (e: Exception) {
             error = e.message ?: "gagal memuat beranda"
@@ -82,7 +81,11 @@ fun HomeScreen(
             }
             IconButton(onClick = onOpenSettings) { Icon(Lucide.Settings, contentDescription = app.animego.inc.ui.uiText("pengaturan")) }
         }
-        if (loading) LoadingState(app.animego.inc.ui.uiText("mengambil katalog AnimeGo..."))
+        if (loading && home == null) {
+            Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
+                Text(app.animego.inc.ui.uiText("mengambil katalog AnimeGo..."), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+        }
         if (error.isNotBlank()) {
             Card(modifier = Modifier.fillMaxWidth().padding(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(16.dp)) {

@@ -15,7 +15,7 @@ rewrite native AnimeGo berbasis Kotlin + Jetpack Compose. project ini tidak mema
 - Jetpack Compose, Material 3, Navigation Compose
 - Lucide Compose (`icons-lucide-cmp`) untuk icon vector
 - OkHttp 5 untuk WordPress REST API AnimeGo
-- Kotlin SQLiteOpenHelper; database `animego.db` versi 7 mempertahankan tabel inti dan menambahkan cache conversation, messages, avatar, read-receipt outbox, serta tombstones sinkronisasi
+- Kotlin SQLiteOpenHelper; database `animego.db` versi 8 mempertahankan tabel inti dan menambahkan cache conversation, messages, avatar, read-receipt outbox, serta tombstones sinkronisasi
 - Preferences DataStore 1.2.1 untuk pengaturan
 - Coil 3 untuk poster dan thumbnail
 - AndroidX Media3 ExoPlayer untuk stream dan video offline
@@ -136,7 +136,7 @@ The Android Firebase registration is included at `app/google-services.json` for 
 ### Android integration
 
 - Google Services Gradle plugin `4.5.0` and Firebase Android BoM `35.1.0` are configured.
-- Firebase Auth supports email/password, email verification, password reset, and Google Credential Manager. Login and registration are separate flows; automatic provider linking and guest-to-account linking are disabled. Local guest favorites/history are merged into the account that is signed in when sync runs. Favorites/history rows are still device-local rather than per-account, so switching between multiple accounts on the same installation needs a separate account-scoping pass before production use.
+- Firebase Auth supports email/password, email verification, password reset, and Google Credential Manager. Login and registration are separate flows; automatic provider linking and guest-to-account linking are disabled. Favorites/history are partitioned locally by Firebase UID and synchronized only to that UID. Anonymous sessions have their own local partition and are not silently merged into another account. Rows created before the account-scoped schema migration are retained under the `legacy` owner because their original account cannot be determined safely.
 - Realtime Database stores private account data, public profile metadata, avatar Base64 payloads, follows, friend requests, friendships, comments, likes, reports, conversations, messages, and push-token indexes. Firebase Storage is not used by the Android project.
 - Avatar image payloads are separated under `avatars/{uid}`; `publicProfiles/{uid}` contains only avatar hash/timestamp metadata. The app downloads image bytes only when the local SHA-256 cache is missing or stale.
 - FCM handles chat notifications and deep-links into a conversation.
@@ -173,3 +173,42 @@ This integration has not been deployed to the live Firebase project. The Securit
 ### Current implementation boundaries
 
 The current pass includes separate login/register screens, Google Credential Manager, account/community entry points, comment screen, user search, follow/friend-request actions, friend list, inbox tab, one-to-one local-first chat, `@anime` / `@anime/episode` sharing, Base64 avatar upload/cache, FCM chat notifications, bilingual UI resources, cache management, and SQLite/cloud merge. It is not yet a complete production social platform: older-page pagination for comments/messages, dedicated follower/following lists, moderation tooling, block-list management/unblock UI, message deletion/editing, and end-to-end App Check enforcement still need follow-up work. App Check is intentionally not enforced from the client because its provider and distribution policy must be configured for the actual release channel first.
+
+
+## update 2.1.0
+
+- favorites dan watch history dipartisi berdasarkan Firebase UID pada SQLite dan tetap disinkronkan ke path RTDB per UID.
+- avatar tetap memakai Firebase Realtime Database (Base64), dengan crop sebelum kompresi, fallback foto Google, dan fallback inisial email. Firebase Storage tidak digunakan.
+- komentar dibuka sebagai ModalBottomSheet dari halaman detail anime.
+- shortcut profil memakai pill horizontal yang bisa digeser.
+- katalog home menggunakan cache-first rendering untuk mempertahankan konten saat refresh.
+- download memvalidasi Content-Range, offset resume, MIME type, dan ukuran hasil.
+- database rules diperbarui di `database/database.rules.json`; jalankan `firebase deploy --only database` untuk menerapkannya.
+
+Data favorites/history dari database versi lama dipindahkan ke owner `legacy` karena skema lama tidak menyimpan UID pemilik. Data tersebut sengaja tidak otomatis diberikan ke akun pertama yang login agar data akun lama tidak bocor ke akun lain.
+
+
+## update 2.1.1 — RTDB rules hardening
+
+- Removed the broad write grant from `users/{uid}`. Private profile fields, favorites, history, tombstones, and sync metadata now have explicit owner-only write rules.
+- Kept public profile and avatar reads public while restricting profile/avatar writes to the matching authenticated UID.
+- Added validation for report fields and FCM token values.
+- Chat message timestamps are written with `ServerValue.TIMESTAMP` so a device clock that runs ahead of Firebase does not cause an otherwise valid message to fail the `createdAt <= now` rule.
+- Username updates now release an old reservation only when the reservation is still owned by the current UID. Legacy empty username nodes are reclaimable without attempting a forbidden delete.
+- Expanded `functions/tests/database.rules.test.mjs` to cover the client RTDB paths used by profile setup, private library sync, avatars, comments/likes, follows, friend requests, conversation indexes, FCM tokens, reports, and chat.
+
+Run the rules suite from the repository root after installing the Functions dependencies and Firebase CLI:
+
+```bash
+cd functions && npm install && cd ..
+npm --prefix functions run test:rules
+```
+
+Deploy only after the emulator suite passes and the project ID has been verified:
+
+```bash
+firebase use animego2
+firebase deploy --only database
+```
+
+The rules file is `database/database.rules.json`, referenced by `firebase.json`. The rules are authored for the current Android client and Admin SDK Cloud Functions. Cloud Functions writes to friendships, blocks, incoming requests, conversation indexes, counters, and message notifications use the Admin SDK and therefore bypass client rules by design. Do not add client write grants to those server-managed paths.

@@ -7,10 +7,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -27,6 +31,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Heart
+import com.composables.icons.lucide.History
+import com.composables.icons.lucide.Download
+import com.composables.icons.lucide.Users
+import com.composables.icons.lucide.Settings
+import com.composables.icons.lucide.UserRound
 import app.animego.inc.AppGraph
 import app.animego.inc.ui.components.UserAvatar
 import app.animego.inc.ui.uiText
@@ -79,7 +91,6 @@ fun ProfileScreen(
                     Text(if (signed) displayName.ifBlank { uiText("pengguna") } else uiText("belum login"), style = MaterialTheme.typography.titleMedium)
                     Text(if (signed) "@${username.ifBlank { uid.take(8) }}" else uiText("login untuk mengakses profil dan menyinkronkan data anime lu."), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
-                if (signed) TextButton(onClick = onEditProfile) { Text(uiText("ubah")) }
             }
         }
         if (!signed) {
@@ -89,17 +100,20 @@ fun ProfileScreen(
                 Text(uiText("belum punya akun?"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = onRegister) { Text(uiText("daftar"), color = MaterialTheme.colorScheme.primary) }
             }
-        } else {
-            OutlinedButton(onClick = onEditProfile, modifier = Modifier.fillMaxWidth()) { Text(uiText("kelola akun")) }
         }
-        Text(uiText("perpustakaan"), style = MaterialTheme.typography.titleMedium)
-        ProfileAction("favorit", "anime favorit yang tersimpan di perangkat ini.", onFavorites)
-        ProfileAction("offline", "episode yang sudah diunduh ke perangkat ini.", onDownloads)
-        ProfileAction("riwayat tontonan", "anime dan episode yang pernah lu tonton.", onHistory)
-        Spacer(Modifier.padding(2.dp))
-        Text(uiText("komunitas animego"), style = MaterialTheme.typography.titleMedium)
-        ProfileAction("komunitas", "temukan pengguna, pertemanan, dan mulai chat.", onCommunity)
-        ProfileAction("pengaturan aplikasi", "bahasa, tema, cache, dan pemutaran.", onSettings)
+        Text(uiText("akses cepat"), style = MaterialTheme.typography.titleMedium)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (signed) ProfilePill("akun", Lucide.UserRound, onEditProfile)
+            ProfilePill("suka", Lucide.Heart, onFavorites)
+            ProfilePill("riwayat", Lucide.History, onHistory)
+            ProfilePill("offline", Lucide.Download, onDownloads)
+            ProfilePill("komunitas", Lucide.Users, onCommunity)
+            ProfilePill("pengaturan", Lucide.Settings, onSettings)
+        }
         if (signed) {
             TextButton(onClick = { scope.launch { graph.auth.logout() } }) { Text(uiText("keluar")) }
         }
@@ -107,14 +121,11 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileAction(title: String, description: String, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(uiText(title), style = MaterialTheme.typography.titleSmall)
-                Text(uiText(description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        }
-    }
+private fun ProfilePill(title: String, icon: ImageVector, onClick: () -> Unit) {
+    FilterChip(
+        selected = false,
+        onClick = onClick,
+        label = { Text(uiText(title), maxLines = 1) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp)) }
+    )
 }

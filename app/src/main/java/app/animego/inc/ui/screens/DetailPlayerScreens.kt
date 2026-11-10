@@ -36,9 +36,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -106,8 +109,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (String, Int) -> Unit, onOpenGenre: (String) -> Unit, onOpenComments: (String) -> Unit) {
+fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (String, Int) -> Unit, onOpenGenre: (String) -> Unit, onLogin: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var anime by remember { mutableStateOf<Anime?>(null) }
@@ -116,13 +120,15 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
     var favorite by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var episodeQuery by remember { mutableStateOf("") }
+    var showCommentsSheet by remember { mutableStateOf(false) }
+    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
     LaunchedEffect(slug) {
         loading = true
         try {
             anime = graph.api.getDetail(slug)
             if (anime == null) error = "anime tidak ditemukan" else {
-                favorite = graph.database.isFavorite(anime!!.slug)
+                favorite = graph.database.isFavorite(anime!!.slug, graph.auth.currentUser?.uid ?: "local")
                 error = ""
             }
         } catch (e: Exception) { error = e.message ?: "gagal mengambil detail anime" }
@@ -153,11 +159,11 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
                             Button(onClick = { if (item.episodes.isNotEmpty()) onPlay(item.slug, 0) }, enabled = item.episodes.isNotEmpty(), modifier = Modifier.weight(1f)) {
                                 Icon(Lucide.Play, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(app.animego.inc.ui.uiText("putar"))
                             }
-                            OutlinedButton(onClick = { onOpenComments(item.slug) }) { Text(app.animego.inc.ui.uiText("komentar")) }
+                            OutlinedButton(onClick = { showCommentsSheet = true }) { Text(app.animego.inc.ui.uiText("komentar")) }
                             OutlinedButton(onClick = {
                                 favorite = !favorite
                                 if (favorite) {
-                                    graph.database.saveFavorite(item.slug, item.title, item.cover)
+                                    graph.database.saveFavorite(item.slug, item.title, item.cover, graph.auth.currentUser?.uid ?: "local")
                                     if (graph.auth.isSignedIn) app.animego.inc.core.firebase.CloudSyncScheduler.syncSoon(context)
                                 } else scope.launch { graph.sync.removeFavorite(item.slug) }
                             }) { Icon(Lucide.Heart, contentDescription = app.animego.inc.ui.uiText("favorit"), tint = if (favorite) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface) }
@@ -224,6 +230,19 @@ fun DetailScreen(graph: AppGraph, slug: String, onBack: () -> Unit, onPlay: (Str
                     }
                 }
                 Spacer(Modifier.height(24.dp))
+            }
+            if (showCommentsSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showCommentsSheet = false },
+                    sheetState = commentsSheetState
+                ) {
+                    CommentsScreen(
+                        graph = graph,
+                        animeSlug = item.slug,
+                        onBack = { showCommentsSheet = false },
+                        onLogin = { showCommentsSheet = false; onLogin() }
+                    )
+                }
             }
         }
     }
@@ -392,7 +411,7 @@ fun PlayerScreen(
                 val pos = player.currentPosition.toDouble() / 1000.0
                 val dur = (player.duration.coerceAtLeast(0L)).toDouble() / 1000.0
                 kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                    graph.database.updateProgress(activeSlug, activeTitle, activeEpisode, activeCover, activeSource, pos, dur)
+                    graph.database.updateProgress(activeSlug, activeTitle, activeEpisode, activeCover, activeSource, pos, dur, graph.auth.currentUser?.uid ?: "local")
                 }
             }
         }

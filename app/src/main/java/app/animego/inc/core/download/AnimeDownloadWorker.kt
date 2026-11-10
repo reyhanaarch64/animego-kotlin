@@ -97,14 +97,29 @@ class AnimeDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             if (response.code !in 200..299 && response.code != 206) {
                 error("HTTP ${response.code}: ${response.message}")
             }
-            // Only append when the server explicitly confirms a partial response.
-            val append = response.code == 206 && offset > 0
-            if (!append) offset = 0L
             val body = response.body ?: error("respons unduhan kosong")
-            val rangeTotal = response.header("Content-Range")
-                ?.substringAfterLast('/')
-                ?.takeIf { it != "*" }
-                ?.toLongOrNull()
+            val contentType = body.contentType()?.toString()?.lowercase().orEmpty()
+            if (contentType.startsWith("text/") || contentType.contains("json") || contentType.contains("xml") || contentType.contains("mpegurl")) {
+                error("server mengembalikan teks/playlist, bukan file video ($contentType)")
+            }
+            // A resumed response is appended only when the server confirms the exact byte offset.
+            val contentRange = response.header("Content-Range")
+            val rangeMatch = contentRange?.let { Regex("^bytes (\\d+)-(\\d+)/(\\d+)$", RegexOption.IGNORE_CASE).matchEntire(it.trim()) }
+            val append = response.code == 206 && offset > 0L
+            var rangeTotal: Long? = null
+            if (response.code == 206) {
+                val match = rangeMatch ?: error("respons 206 tidak memiliki Content-Range yang valid")
+                val rangeStart = match.groupValues[1].toLongOrNull() ?: error("Content-Range tidak valid")
+                val rangeEnd = match.groupValues[2].toLongOrNull() ?: error("Content-Range tidak valid")
+                rangeTotal = match.groupValues[3].toLongOrNull() ?: error("ukuran total pada Content-Range tidak valid")
+                if (rangeEnd < rangeStart || rangeTotal <= rangeEnd) error("rentang byte dari server tidak valid")
+                if (rangeStart != (if (append) offset else 0L)) error("server mengirim rentang byte yang tidak sesuai")
+                val expectedBody = rangeEnd - rangeStart + 1L
+                if (body.contentLength() >= 0L && body.contentLength() != expectedBody) error("ukuran respons parsial tidak sesuai Content-Range")
+            } else if (response.code == 200 && offset > 0L) {
+                // Server ignored Range: restart from byte zero instead of corruptly appending.
+                offset = 0L
+            }
             val totalHeader = rangeTotal ?: body.contentLength().takeIf { it > 0 }?.plus(offset) ?: row.total
             var downloaded = offset
             val lastProgress = longArrayOf(0L)
@@ -130,6 +145,9 @@ class AnimeDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
                 }
             }
             if (!part.isFile || part.length() <= 0) error("file unduhan kosong")
+            if (totalHeader > 0L && part.length() != totalHeader) error("ukuran file tidak lengkap (${part.length()}/$totalHeader byte)")
+            if (part.length() < 12L) error("file terlalu kecil untuk menjadi video yang valid")
+            validateDownloadedPayload(part)
             if (target.exists() && !target.delete()) error("file tujuan tidak dapat diganti")
             if (!part.renameTo(target)) {
                 part.copyTo(target, overwrite = true)
@@ -140,6 +158,31 @@ class AnimeDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             setForeground(foregroundInfo(id, "Unduhan selesai", 100, false, row.title, row.ep))
         }
         if (completedByRestart) return
+    }
+
+
+    /** Reject common HTML/JSON challenge pages even when the origin labels them as octet-stream. */
+    private fun validateDownloadedPayload(file: File) {
+        val head = ByteArray(512)
+        val count = file.inputStream().buffered().use { input ->
+            var offset = 0
+            while (offset < head.size) {
+                val read = input.read(head, offset, head.size - offset)
+                if (read <= 0) break
+                offset += read
+            }
+            offset
+        }
+        if (count <= 0) error("file unduhan kosong")
+        val prefix = String(head, 0, count, Charsets.UTF_8)
+            .trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+            .lowercase()
+        val looksLikeErrorPage = prefix.startsWith("<!doctype html") ||
+            prefix.startsWith("<html") || prefix.startsWith("<head") ||
+            prefix.startsWith("{\"error\"") || prefix.startsWith("{\"message\"") ||
+            prefix.startsWith("access denied") || prefix.startsWith("forbidden") ||
+            prefix.startsWith("cloudflare")
+        if (looksLikeErrorPage) error("server mengembalikan halaman error, bukan file video")
     }
 
     private fun createChannel() {

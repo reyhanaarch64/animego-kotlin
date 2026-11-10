@@ -51,6 +51,9 @@ class AnimeApi {
         .build()
 
     @Volatile private var warmedUp = false
+    @Volatile private var homeCache: AnimeHome? = null
+
+    fun getCachedHome(): AnimeHome? = homeCache
 
     /** Cookie header for download requests, sharing the same native HTTP cookie jar as the API. */
     fun cookieHeader(rawUrl: String): String {
@@ -123,12 +126,24 @@ class AnimeApi {
         }
     }
 
-    suspend fun getHome(): AnimeHome = kotlinx.coroutines.supervisorScope {
+    suspend fun getHome(forceRefresh: Boolean = false): AnimeHome {
+        if (!forceRefresh) homeCache?.let { return it }
+        val loaded = kotlinx.coroutines.supervisorScope {
         val ongoing = async { runCatching { getList("ongoing", 1, 12) }.getOrDefault(AnimePage()) }
         val top = async { runCatching { getList("top", 1, 12) }.getOrDefault(AnimePage()) }
         val movies = async { runCatching { getList("movies", 1, 12) }.getOrDefault(AnimePage()) }
         val completed = async { runCatching { getList("completed", 1, 12) }.getOrDefault(AnimePage()) }
         AnimeHome(ongoing.await(), top.await(), movies.await(), completed.await())
+        }
+        val previous = homeCache
+        val stable = if (previous == null) loaded else AnimeHome(
+            ongoing = loaded.ongoing.takeIf { it.items.isNotEmpty() } ?: previous.ongoing,
+            top = loaded.top.takeIf { it.items.isNotEmpty() } ?: previous.top,
+            movies = loaded.movies.takeIf { it.items.isNotEmpty() } ?: previous.movies,
+            completed = loaded.completed.takeIf { it.items.isNotEmpty() } ?: previous.completed
+        )
+        if (stable.ongoing.items.isNotEmpty() || stable.top.items.isNotEmpty() || stable.movies.items.isNotEmpty() || stable.completed.items.isNotEmpty()) homeCache = stable
+        return stable
     }
 
     suspend fun getList(kind: String, page: Int = 1, limit: Int = 12): AnimePage {

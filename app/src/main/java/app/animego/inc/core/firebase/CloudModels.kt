@@ -3,6 +3,7 @@ package app.animego.inc.core.firebase
 data class CloudUser(
     val uid: String = "", val username: String = "", val displayName: String = "",
     val bio: String = "", val avatarHash: String = "", val avatarMimeType: String = "image/jpeg",
+    val googlePhotoUrl: String = "", val avatarFallback: String = "",
     val avatarUpdatedAt: Long = 0L, val createdAt: Long = 0L,
     val followerCount: Long = 0L, val followingCount: Long = 0L
 )

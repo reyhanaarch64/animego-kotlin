@@ -30,7 +30,7 @@ fun FavoritesScreen(graph: AppGraph, onOpenAnime: (String) -> Unit) {
     var favorites by remember { mutableStateOf(emptyList<Anime>()) }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
-        favorites = graph.database.getFavorites().map { Anime(slug = it.slug, title = it.title, cover = it.cover) }
+        favorites = graph.database.getFavorites(graph.auth.currentUser?.uid ?: "local").map { Anime(slug = it.slug, title = it.title, cover = it.cover) }
     }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(app.animego.inc.ui.uiText("favorit"), "anime yang lu simpan")
@@ -51,7 +51,7 @@ fun HistoryScreen(graph: AppGraph, onResume: (HistoryRecord) -> Unit) {
     var history by remember { mutableStateOf(emptyList<HistoryRecord>()) }
     var reload by remember { mutableIntStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
-    LaunchedEffect(reload) { history = graph.database.getHistory() }
+    LaunchedEffect(reload) { history = graph.database.getHistory(graph.auth.currentUser?.uid ?: "local") }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(app.animego.inc.ui.uiText("riwayat"), "lanjutkan dari posisi terakhir", action = {
             if (history.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text(app.animego.inc.ui.uiText("bersihkan")) }

@@ -41,29 +41,12 @@ fun CommentsScreen(graph: AppGraph, animeSlug: String, onBack: () -> Unit, onLog
         busy = false
     } }
     LaunchedEffect(animeSlug, loggedIn) { reload() }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column { Text(app.animego.inc.ui.uiText("komentar"), style = MaterialTheme.typography.headlineSmall); Text(animeSlug, style = MaterialTheme.typography.bodySmall) }
-            TextButton(onClick = onBack) { Text(app.animego.inc.ui.uiText("kembali")) }
+    Column(Modifier.fillMaxWidth().heightIn(min = 420.dp, max = 720.dp).padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Column { Text(app.animego.inc.ui.uiText("komentar"), style = MaterialTheme.typography.titleLarge); Text("$animeSlug · ${comments.size}", style = MaterialTheme.typography.bodySmall) }
+            TextButton(onClick = onBack) { Text("tutup") }
         }
-        if (replyTo.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(app.animego.inc.ui.uiTextFormat("membalas komentar", replyTo.take(8)))
-            TextButton(onClick = { replyTo = "" }) { Text(app.animego.inc.ui.uiText("batal")) }
-        }
-        OutlinedTextField(draft, { draft = it }, modifier = Modifier.fillMaxWidth(), label = { Text(uiText(if (replyTo.isBlank()) "tulis komentar" else "tulis balasan")) }, maxLines = 4)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
-                if (!loggedIn) onLogin() else scope.launch {
-                    busy = true
-                    runCatching { graph.social.postComment(animeSlug, draft, replyTo) }
-                        .onSuccess { draft = ""; replyTo = ""; reload() }
-                        .onFailure { status = it.message.orEmpty() }
-                    busy = false
-                }
-            }, enabled = draft.isNotBlank() && !busy, modifier = Modifier.weight(1f)) { Text(uiText(if (loggedIn) "kirim" else "masuk untuk komentar")) }
-            OutlinedButton(onClick = { reload() }, enabled = !busy) { Text(app.animego.inc.ui.uiText("muat ulang")) }
-        }
-        if (status.isNotBlank()) Text(uiText(status), color = MaterialTheme.colorScheme.error)
+        if (status.isNotBlank()) Text(uiText(status), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(comments, key = { it.id }) { comment ->
                 Card(Modifier.fillMaxWidth()) {
@@ -88,6 +71,22 @@ fun CommentsScreen(graph: AppGraph, animeSlug: String, onBack: () -> Unit, onLog
                     }
                 }
             }
+        }
+        if (replyTo.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(app.animego.inc.ui.uiTextFormat("membalas komentar", replyTo.take(8)), style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { replyTo = "" }) { Text(app.animego.inc.ui.uiText("batal")) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            OutlinedTextField(draft, { draft = it }, modifier = Modifier.weight(1f), label = { Text(uiText(if (replyTo.isBlank()) "tulis komentar" else "tulis balasan")) }, maxLines = 3)
+            Button(onClick = {
+                if (!loggedIn) onLogin() else scope.launch {
+                    busy = true
+                    runCatching { graph.social.postComment(animeSlug, draft, replyTo) }
+                        .onSuccess { draft = ""; replyTo = ""; reload() }
+                        .onFailure { status = it.message.orEmpty() }
+                    busy = false
+                }
+            }, enabled = draft.isNotBlank() && !busy) { Text(uiText(if (loggedIn) "kirim" else "masuk")) }
         }
     }
 }

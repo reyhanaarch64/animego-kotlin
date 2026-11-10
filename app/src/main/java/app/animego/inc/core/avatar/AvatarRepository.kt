@@ -32,33 +32,42 @@ class AvatarRepository(
 
     private val avatarDirectory: File get() = File(context.filesDir, "avatar-cache").apply { mkdirs() }
 
-    suspend fun uploadAvatar(uri: Uri): File = withContext(Dispatchers.IO) {
+    suspend fun uploadAvatar(uri: Uri, centerX: Float = 0.5f, centerY: Float = 0.5f, zoom: Float = 1f): File = withContext(Dispatchers.IO) {
         val user = firebase.auth.currentUser ?: error("login diperlukan")
         require(!user.isAnonymous) { "fitur ini memerlukan akun" }
-        val bytes = compressImage(uri)
+        val bytes = compressImage(uri, centerX, centerY, zoom)
         val hash = sha256(bytes)
         val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
         val now = System.currentTimeMillis()
-        val root = firebase.database.reference
-        root.updateChildren(mapOf(
-            "avatars/${user.uid}/data" to base64,
-            "avatars/${user.uid}/meta/hash" to hash,
-            "avatars/${user.uid}/meta/mimeType" to "image/jpeg",
-            "avatars/${user.uid}/meta/updatedAt" to com.google.firebase.database.ServerValue.TIMESTAMP,
-            "publicProfiles/${user.uid}/avatarHash" to hash,
-            "publicProfiles/${user.uid}/avatarUpdatedAt" to com.google.firebase.database.ServerValue.TIMESTAMP
-        )).await()
         val file = File(avatarDirectory, "${user.uid}.jpg")
-        val temporary = File(avatarDirectory, "${user.uid}.jpg.tmp")
+        val temporary = File(avatarDirectory, "${user.uid}.upload-${System.nanoTime()}.tmp")
+        // Prepare the local payload before the cloud write so a local I/O failure
+        // cannot leave the server updated while the UI reports an upload failure.
         temporary.writeBytes(bytes)
+        val root = firebase.database.reference
+        try {
+            root.updateChildren(mapOf(
+                "avatars/${user.uid}/data" to base64,
+                "avatars/${user.uid}/meta/hash" to hash,
+                "avatars/${user.uid}/meta/mimeType" to "image/jpeg",
+                "avatars/${user.uid}/meta/updatedAt" to com.google.firebase.database.ServerValue.TIMESTAMP,
+                "publicProfiles/${user.uid}/avatarHash" to hash,
+                "publicProfiles/${user.uid}/avatarUpdatedAt" to com.google.firebase.database.ServerValue.TIMESTAMP
+            )).await()
+        } catch (error: Exception) {
+            temporary.delete()
+            throw error
+        }
         // Replace the previous cache file atomically; never delete the valid image first.
         try {
             Os.rename(temporary.absolutePath, file.absolutePath)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            // A cache write is recoverable from RTDB; do not report a successful
+            // cloud upload as failed just because the atomic rename was unavailable.
+            runCatching { temporary.copyTo(file, overwrite = true) }
             temporary.delete()
-            throw IllegalStateException("gagal menyimpan cache avatar", e)
         }
-        database.putAvatarCache(user.uid, hash, "image/jpeg", now, now, file.absolutePath)
+        runCatching { database.putAvatarCache(user.uid, hash, "image/jpeg", now, now, file.absolutePath) }
         file
     }
 
@@ -69,13 +78,13 @@ class AvatarRepository(
     }
 
     /** Returns the persistent local file; Base64 is fetched only when metadata proves it changed. */
-    suspend fun getAvatarFile(uid: String): File? = withContext(Dispatchers.IO) {
+    suspend fun getAvatarFile(uid: String, forceRefresh: Boolean = false): File? = withContext(Dispatchers.IO) {
         if (uid.isBlank()) return@withContext null
         val cached = database.getAvatarCache(uid)
         val cachedFile = cached?.path?.let(::File)?.takeIf { it.isFile && it.length() > 0L }
         val now = System.currentTimeMillis()
         // Negative cache entries also avoid repeating metadata requests for users without an avatar.
-        if (cached != null && now - cached.checkedAt < META_CHECK_TTL_MS) return@withContext cachedFile
+        if (!forceRefresh && cached != null && now - cached.checkedAt < META_CHECK_TTL_MS) return@withContext cachedFile
 
         try {
             val metaSnapshot = firebase.database.reference.child("avatars").child(uid).child("meta").get().await()
@@ -105,7 +114,7 @@ class AvatarRepository(
                 return@withContext cachedFile
             }
             val file = File(avatarDirectory, "$uid.jpg")
-            val temporary = File(avatarDirectory, "$uid.jpg.tmp")
+            val temporary = File(avatarDirectory, "$uid.refresh-${System.nanoTime()}.tmp")
             temporary.writeBytes(decoded)
             // Rename replaces the previous file atomically on the same filesystem.
             try {
@@ -123,7 +132,7 @@ class AvatarRepository(
 
     fun cacheDirectory(): File = avatarDirectory
 
-    private fun compressImage(uri: Uri): ByteArray {
+    private fun compressImage(uri: Uri, centerX: Float, centerY: Float, zoom: Float): ByteArray {
         val resolver = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -148,10 +157,13 @@ class AvatarRepository(
         val oriented = orientBitmap(decoded, orientation)
         if (oriented !== decoded) decoded.recycle()
 
-        // The profile avatar is square, so crop the centered square before resizing.
-        val side = min(oriented.width, oriented.height)
-        val left = (oriented.width - side) / 2
-        val top = (oriented.height - side) / 2
+        // Crop a user-selected square region before resizing.
+        val baseSide = min(oriented.width, oriented.height)
+        val side = (baseSide / zoom.coerceIn(1f, 3f)).toInt().coerceAtLeast(1)
+        val cx = (centerX.coerceIn(0f, 1f) * oriented.width).toInt()
+        val cy = (centerY.coerceIn(0f, 1f) * oriented.height).toInt()
+        val left = (cx - side / 2).coerceIn(0, oriented.width - side)
+        val top = (cy - side / 2).coerceIn(0, oriented.height - side)
         val cropped = Bitmap.createBitmap(oriented, left, top, side, side)
         if (cropped !== oriented) oriented.recycle()
 

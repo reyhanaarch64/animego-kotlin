@@ -26,12 +26,12 @@ class CloudSyncRepository(private val context: Context, private val firebase: Fi
             val cloudTime = cloudFavoriteTombstones.child(slug).getValue(Long::class.java) ?: 0L
             if (deletedAt > cloudTime) root.child("users").child(uid).child("favoriteTombstones").child(slug).setValue(deletedAt).await()
         }
-        val localFavorites = local.getFavorites()
+        val localFavorites = local.getFavorites(uid)
         val localSlugs = localFavorites.map { it.slug }.toSet()
         localFavorites.forEach { item ->
             val deletedAt = favoriteTombstones[item.slug] ?: 0L
             if (deletedAt >= item.addedAt && deletedAt > 0L) {
-                local.removeFavorite(item.slug)
+                local.removeFavorite(item.slug, uid)
                 cloudFavoritesRef.child(item.slug).removeValue().await()
             } else if (!cloudFavorites.child(item.slug).exists()) {
                 cloudFavoritesRef.child(item.slug).setValue(mapOf(
@@ -49,7 +49,7 @@ class CloudSyncRepository(private val context: Context, private val firebase: Fi
             } else if (slug.isNotBlank() && slug !in localSlugs) {
                 local.saveFavoriteAt(slug,
                     item.child("title").getValue(String::class.java).orEmpty(),
-                    item.child("cover").getValue(String::class.java).orEmpty(), addedAt)
+                    item.child("cover").getValue(String::class.java).orEmpty(), addedAt, uid)
             }
         }
 
@@ -69,14 +69,14 @@ class CloudSyncRepository(private val context: Context, private val firebase: Fi
         val localHistoryClearedAt = local.getHistoryClearedAt(uid)
         if (localHistoryClearedAt > cloudHistoryClearedAt) root.child("users").child(uid).child("historyClearedAt").setValue(localHistoryClearedAt).await()
         val historyClearedAt = maxOf(cloudHistoryClearedAt, localHistoryClearedAt)
-        val localHistory = local.getHistory()
+        val localHistory = local.getHistory(uid)
         val localHistoryBySlug = localHistory.associateBy { it.slug }
         localHistory.forEach { item ->
             val remote = cloudHistory.child(item.slug)
             val remoteTime = remote.child("watchedAt").getValue(Long::class.java) ?: 0L
             val deletedAt = historyTombstones[item.slug] ?: 0L
             if ((deletedAt >= item.watchedAt && deletedAt > 0L) || (historyClearedAt >= item.watchedAt && historyClearedAt > 0L)) {
-                local.removeHistory(item.slug)
+                local.removeHistory(item.slug, uid)
                 cloudHistoryRef.child(item.slug).removeValue().await()
             } else if (!remote.exists() || item.watchedAt >= remoteTime) {
                 cloudHistoryRef.child(item.slug).setValue(mapOf(
@@ -100,7 +100,7 @@ class CloudSyncRepository(private val context: Context, private val firebase: Fi
                     item.child("cover").getValue(String::class.java).orEmpty(),
                     item.child("source").getValue(String::class.java).orEmpty(),
                     item.child("position").getValue(Double::class.java) ?: 0.0,
-                    item.child("duration").getValue(Double::class.java) ?: 0.0, remoteTime)
+                    item.child("duration").getValue(Double::class.java) ?: 0.0, remoteTime, uid)
             }
         }
         root.child("users").child(uid).child("lastSyncAt").setValue(ServerValue.TIMESTAMP).await()
@@ -109,7 +109,7 @@ class CloudSyncRepository(private val context: Context, private val firebase: Fi
     suspend fun removeFavorite(slug: String) {
         val user = firebase.auth.currentUser
         if (user != null && !user.isAnonymous) local.markFavoriteRemoved(user.uid, slug)
-        local.removeFavorite(slug)
+        local.removeFavorite(slug, user?.uid ?: "local")
         CloudSyncScheduler.syncSoon(context)
         runCatching { syncNow() }
     }
@@ -117,14 +117,14 @@ class CloudSyncRepository(private val context: Context, private val firebase: Fi
     suspend fun removeHistory(slug: String) {
         val user = firebase.auth.currentUser
         if (user != null && !user.isAnonymous) local.markHistoryRemoved(user.uid, slug)
-        local.removeHistory(slug)
+        local.removeHistory(slug, user?.uid ?: "local")
         CloudSyncScheduler.syncSoon(context)
         runCatching { syncNow() }
     }
 
     suspend fun clearHistory() {
         val user = firebase.auth.currentUser
-        local.clearHistory(user?.takeIf { !it.isAnonymous }?.uid.orEmpty())
+        local.clearHistory(user?.uid ?: "local")
         CloudSyncScheduler.syncSoon(context)
         runCatching { syncNow() }
     }

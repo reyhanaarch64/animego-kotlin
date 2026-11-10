@@ -164,10 +164,10 @@ class PlaybackService : Service() {
         val cover = PlaybackEngine.currentCover
         val position = player.currentPosition.coerceAtLeast(0L).toDouble() / 1000.0
         val duration = player.duration.takeIf { it > 0L }?.toDouble()?.div(1000.0) ?: 0.0
-        val database = AppGraph.from(applicationContext).database
+        val graph = AppGraph.from(applicationContext)
+        val database = graph.database
         ioScope.launch {
-            runCatching { database.updateProgress(slug, title, episode, cover, source, position, duration) }
-            val graph = AppGraph.from(applicationContext)
+            runCatching { database.updateProgress(slug, title, episode, cover, source, position, duration, graph.auth.currentUser?.uid ?: "local") }
             val now = System.currentTimeMillis()
             if (graph.auth.isSignedIn && (syncCloud || now - lastCloudSyncRequestAt >= 180_000L)) {
                 lastCloudSyncRequestAt = now
